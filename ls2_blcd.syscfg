@@ -43,12 +43,15 @@ GPIO3.initialOutputState = "High";
 GPIO3.gpioPin.$assign    = "expansion.31";
 
 PWM1.$name                = "PHASE_A_HIN";
+PWM1.timer.$assign        = "Timer_A1";
 PWM1.timer.pwmPin.$assign = "expansion.24";
 
 PWM2.$name                = "PHASE_B_HIN";
+PWM2.timer.$assign        = "Timer_A1";
 PWM2.timer.pwmPin.$assign = "expansion.26";
 
 PWM3.$name                = "PHASE_C_HIN";
+PWM3.timer.$assign        = "Timer_A1";
 PWM3.timer.pwmPin.$assign = "expansion.25";
 
 Power.performanceLevel3.$name = "ti_drivers_power_PowerMSP432PerfLevels0";
@@ -57,13 +60,15 @@ Power.performanceLevel1.$name = "ti_drivers_power_PowerMSP432PerfLevels2";
 Power.performanceLevel0.$name = "ti_drivers_power_PowerMSP432PerfLevels3";
 
 
-Button1.$name         = "Board_BUTTON_S1";
-Button1.$hardware     = system.deviceData.board.components.S1;
-Button1.gpioPin.$name = "Board_BUTTON_S1_GPIO";
+Button1.$name                    = "Board_BUTTON_S1";
+Button1.$hardware                = system.deviceData.board.components.S1;
+Button1.gpioPin.$name            = "Board_BUTTON_S1_GPIO";
+Button1.gpioPin.callbackFunction = "hwiButtonS1Fx";
 
-Button2.$name         = "Board_BUTTON_S2";
-Button2.$hardware     = system.deviceData.board.components.S2;
-Button2.gpioPin.$name = "Board_BUTTON_S2_GPIO";
+Button2.$name                    = "Board_BUTTON_S2";
+Button2.$hardware                = system.deviceData.board.components.S2;
+Button2.gpioPin.$name            = "Board_BUTTON_S2_GPIO";
+Button2.gpioPin.callbackFunction = "hwiButtonS2Fx";
 
 LED1.$hardware = system.deviceData.board.components.LED1_RED;
 LED1.$name     = "Board_LED_0";
@@ -73,9 +78,6 @@ LED1.$name     = "Board_LED_0";
  * version of the tool will not impact the pinmux you originally saw.  These lines can be completely deleted in order to
  * re-solve from scratch.
  */
-PWM1.timer.$suggestSolution              = "Timer_A1";
-PWM2.timer.$suggestSolution              = "Timer_A1";
-PWM3.timer.$suggestSolution              = "Timer_A1";
 RTOS.timer0.resource.$suggestSolution    = "Timer_A0";
 Button1.gpioPin.gpioPin.$suggestSolution = "P1.1.GPIO/EUSCI_A0_SPI.CLK";
 Button2.gpioPin.gpioPin.$suggestSolution = "P1.4.GPIO/EUSCI_B0_SPI.STE";

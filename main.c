@@ -42,8 +42,11 @@
 
 /* BIOS Module Headers */
 #include <ti/sysbios/BIOS.h>
+#include <ti/sysbios/hal/Timer.h>
 #include <ti/sysbios/hal/Hwi.h>
+#include <ti/sysbios/knl/Swi.h>
 #include <ti/sysbios/knl/Task.h>
+#include <ti/sysbios/knl/Idle.h>
 #include <ti/sysbios/knl/Event.h>
 #include <ti/sysbios/knl/Semaphore.h>
 
@@ -51,28 +54,29 @@
 #include "ti_drivers_config.h"
 #include <ti/drivers/GPIO.h>
 #include <ti/drivers/PWM.h>
-#include <ti/drivers/Timer.h>
 
 /* Board header files */
 #include <ti/drivers/Board.h>
 
 /* Handlers RTOS */
 extern Timer_Handle timerInitialAcceleration;
+extern Timer_Handle timerAccelerator;
+extern Swi_Handle swiAccelerateMotor;
 extern Task_Handle taskPhaseChange;
+extern Task_Handle taskMotorControl;
 extern Event_Handle eventPhaseChange;
+extern Event_Handle eventMotorControl;
 
 /* Function declaration */
 //void hwiLaunchpadButtonsFx(UArg arg);
 void timerInitialAccelerationFx(UArg arg);
+void timerAcceleratorFx(UArg arg);
+void swiAccelerateMotorFx(UArg arg1, UArg arg2);
 void taskPhaseChangeFx(UArg arg1, UArg arg2);
-void setPhase(uint8_t phase);
+void taskMotorControlFx(UArg arg1, UArg arg2);
+void setPhase(uint8_t phase, PWM_Handle pwmA, PWM_Handle pwmB, PWM_Handle pwmC);
 
-/* PWM - WILL GO INTO A TASK */
-PWM_Handle pwmA;
-PWM_Handle pwmB;
-PWM_Handle pwmC;
-PWM_Params pwmParams;
-uint32_t   dutyValue;
+// GLOBAL
 
 /*
  *  ======== main ========
@@ -88,9 +92,6 @@ int main()
     GPIO_enableInt(Board_BUTTON_S1_GPIO);
     GPIO_enableInt(Board_BUTTON_S2_GPIO);
 
-    /* RED LED ON */
-    //GPIO_write(Board_LED_0_GPIO, CONFIG_LED_ON);
-
     /* Start msg */
     System_printf("Starting... \n");
     System_flush();
@@ -100,44 +101,119 @@ int main()
     return(0);
 }
 
-// HWI
+// HWI - ?
 
-//void hwiPort1Fx(UArg arg){
-//    GPIO_clearInt(Board_BUTTON_S1_GPIO);
-//    GPIO_clearInt(Board_BUTTON_S2_GPIO);
-//    Event_post(eventPhaseChange, Event_Id_00);
-//}
+void hwiButtonS1Fx(void){
+    GPIO_clearInt(Board_BUTTON_S1_GPIO);
+    Event_post(eventMotorControl, Event_Id_01);
+}
 
-//void hwiButtonS1Fx(void){
-//    GPIO_clearInt(Board_BUTTON_S1_GPIO);
-//    Event_post(eventPhaseChange, Event_Id_01);
-//}
-//
-//void hwiButtonS2Fx(void){
-//    GPIO_clearInt(Board_BUTTON_S2_GPIO);
-//    Event_post(eventPhaseChange, Event_Id_02);
-//}
+void hwiButtonS2Fx(void){
+    GPIO_clearInt(Board_BUTTON_S2_GPIO);
+    Event_post(eventMotorControl, Event_Id_02);
+}
 
 // TIMER
 void timerInitialAccelerationFx(UArg arg){
-    Event_post(eventPhaseChange, Event_Id_00);
+    // CHANGE PHASE
+    Event_post(eventPhaseChange, Event_Id_01);
+}
+
+void timerAcceleratorFx(UArg arg){
+    Swi_post(swiAccelerateMotor);
+}
+
+// SWI
+void swiAccelerateMotorFx(UArg arg1, UArg arg2){
+    // ACCELERATE MOTOR
+
+    // Reduce timer period
+    UInt32 timerPeriod;
+    timerPeriod = Timer_getPeriod(timerInitialAcceleration);
+    timerPeriod -= 5;
+
+    if(timerPeriod > 35){
+        Timer_setPeriod(timerInitialAcceleration, timerPeriod);
+        Timer_start(timerInitialAcceleration);
+    } else {
+        Timer_stop(timerAccelerator);
+    }
+
+    // Print period
+    //Event_post(eventMotorControl, Event_Id_00);
 }
 
 // TASK
+void taskMotorControlFx(UArg arg1, UArg arg2){
+
+    UInt events = 0;
+
+    while(1){
+
+            events = Event_pend(eventMotorControl, Event_Id_NONE, Event_Id_00 | Event_Id_01 | Event_Id_02 , BIOS_WAIT_FOREVER);
+
+            switch(events){
+            case Event_Id_00:
+                // UNUSED
+//                System_printf("Timer Period: %d \n", timerPeriod);
+//                System_flush();
+                break;
+
+            case Event_Id_01:
+
+                // Start Initial acceleration timer
+               Timer_setPeriod(timerInitialAcceleration, 105);
+               Timer_start(timerInitialAcceleration);
+               Timer_start(timerAccelerator);
+
+               System_printf("Motor acceleration has started! \n");
+               System_flush();
+               break;
+
+            case Event_Id_02:
+
+                // Stop Initial acceleration timer and motor
+                Timer_stop(timerInitialAcceleration);
+                Timer_stop(timerAccelerator);
+                Event_post(eventPhaseChange, Event_Id_00);
+
+                UInt32 timerPeriod;
+                timerPeriod = Timer_getPeriod(timerInitialAcceleration);
+                System_printf("Timer Period: %d \n", timerPeriod);
+
+                System_printf("Motor acceleration has stoped! \n");
+                System_flush();
+                break;
+
+            default:
+                System_printf("Unknown event on taskPhaseChange. Event: %d \n", events);
+                System_flush();
+                while(1);
+
+            }
+        }
+}
+
 void taskPhaseChangeFx(UArg arg1, UArg arg2){
+
+    // VARIABLES
+    PWM_Handle pwmA;
+    PWM_Handle pwmB;
+    PWM_Handle pwmC;
+    PWM_Params pwmParams;
+    uint32_t   dutyCycle;
 
     uint8_t phase = 0;
     UInt events = 0;
-    //int32_t timerStatus = 0;
 
-    // INIT PWM - WILL GO INTO A SEPARATE TASK
+    // INIT PWM
     // Initialize the PWM parameters
     PWM_Params_init(&pwmParams);
-    pwmParams.idleLevel = PWM_IDLE_LOW;      // Output low when PWM is not running
-    pwmParams.periodUnits = PWM_PERIOD_US;   // Period is in us
-    pwmParams.periodValue = 100;            // 100us -> 10KHz
-    pwmParams.dutyUnits = PWM_DUTY_FRACTION; // Duty is in fractional percentage
-    pwmParams.dutyValue = 0;                 // 0% initial duty cycle
+    pwmParams.idleLevel = PWM_IDLE_LOW;         // Output low when PWM is not running
+    pwmParams.periodUnits = PWM_PERIOD_US;      // Period is in us
+    pwmParams.periodValue = 100;                // 100us -> 10KHz
+    pwmParams.dutyUnits = PWM_DUTY_FRACTION;    // Duty is in fractional percentage
+    pwmParams.dutyValue = 0;                    // 0% initial duty cycle
 
     // Open the PWM instance
     pwmA = PWM_open(PHASE_A_HIN, &pwmParams);
@@ -161,76 +237,57 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
         while (1);
     }
 
-    // PWM duty
-    dutyValue = (uint32_t) (((uint64_t) PWM_DUTY_FRACTION_MAX * 10) / 100);
+    // PWM duty - Initial duty 10%
+    dutyCycle = (uint32_t) (((uint64_t) PWM_DUTY_FRACTION_MAX * 10) / 100);
 
 
     // CUT CURRENT TO MOTOR
-    setPhase(phase);            // phase = 0, cuts current
+    setPhase(0, pwmA, pwmB, pwmC);              // phase = 0, cuts current
 
     while(1){
-        events = Event_pend(eventPhaseChange, Event_Id_NONE, Event_Id_00 /*| Event_Id_01 | Event_Id_02*/, BIOS_WAIT_FOREVER);
+        events = Event_pend(eventPhaseChange, Event_Id_NONE, Event_Id_00 | Event_Id_01, BIOS_WAIT_FOREVER);
 
-        switch(events){
-        case Event_Id_00:
+        PWM_setDuty(pwmA, dutyCycle);
+        PWM_setDuty(pwmB, dutyCycle);
+        PWM_setDuty(pwmC, dutyCycle);
 
-            // Phase increment
-            phase++;
-            if(phase > 6){phase = 1;}
+        switch (events) {
+            case Event_Id_00:
 
-            setPhase(phase);
+                // Stop motor
+                phase = 0;
+                break;
 
-            // Print
-            //System_printf("%d\n", phase);
-            //System_flush();
+            case Event_Id_01:
 
-            break;
+                // Next phase
+                phase++;
+                if(phase > 6){phase = 1;}
+                break;
 
-//        case Event_Id_01:
-//
-//            // Start Initial acceleration timer
-//            timerStatus = Timer_start(timerInitialAcceleration);
-//
-//            switch (timerStatus) {
-//                case Timer_STATUS_SUCCESS:
-//                    System_printf("Motor acceleration has started! \n");
-//                    System_flush();
-//                    break;
-//
-//                case Timer_STATUS_ERROR:
-//                    System_printf("Error occurred on acceleration timer startup! \n");
-//                    System_flush();
-//                    break;
-//
-//                default:
-//                    System_printf("Unknown error on acceleration timer startup: %d \n", timerStatus);
-//                    System_flush();
-//                    break;
-//            }
-//            break;
-//
-//            case Event_Id_02:
-//
-//                // Stop Initial acceleration timer
-//                Timer_stop(timerInitialAcceleration);
-//                System_printf("Motor acceleration has stoped! \n");
-//                break;
+            default:
 
-        default:
-            System_printf("Unknown event on taskPhaseChange. Event: %d \n", events);
-            System_flush();
-            while(1);
+                // Stop Motor
+                setPhase(0, pwmA, pwmB, pwmC);
 
+                // Report error
+                System_printf("Unknown event on taskPhaseChange. Event: %d \n", events);
+                System_flush();
+
+                // Program halt
+                while(1);
         }
+
+        // SET MOTOR PHASE
+        setPhase(phase, pwmA, pwmB, pwmC);
     }
+
+
 }
 
-// FUNCTIONS
-void setPhase(uint8_t phase){
 
-    PWM_setDuty(pwmA, dutyValue);
-    PWM_setDuty(pwmB, dutyValue);
-    PWM_setDuty(pwmC, dutyValue);
+// FUNCTIONS
+void setPhase(uint8_t phase, PWM_Handle pwmA, PWM_Handle pwmB, PWM_Handle pwmC){
 
     switch (phase) {
         case 1:
