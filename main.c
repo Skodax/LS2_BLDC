@@ -50,6 +50,7 @@
 /* Drivers header files */
 #include "ti_drivers_config.h"
 #include <ti/drivers/GPIO.h>
+#include <ti/drivers/PWM.h>
 #include <ti/drivers/Timer.h>
 
 /* Board header files */
@@ -66,6 +67,13 @@ void timerInitialAccelerationFx(UArg arg);
 void taskPhaseChangeFx(UArg arg1, UArg arg2);
 void setPhase(uint8_t phase);
 
+/* PWM - WILL GO INTO A TASK */
+PWM_Handle pwmA;
+PWM_Handle pwmB;
+PWM_Handle pwmC;
+PWM_Params pwmParams;
+uint32_t   dutyValue;
+
 /*
  *  ======== main ========
  */
@@ -74,13 +82,14 @@ int main()
     /* Call driver init functions */
     Board_init();
     GPIO_init();
+    PWM_init();
 
     /* Enable interrupts */
     GPIO_enableInt(Board_BUTTON_S1_GPIO);
     GPIO_enableInt(Board_BUTTON_S2_GPIO);
 
     /* RED LED ON */
-    GPIO_write(Board_LED_0_GPIO, CONFIG_LED_ON);
+    //GPIO_write(Board_LED_0_GPIO, CONFIG_LED_ON);
 
     /* Start msg */
     System_printf("Starting... \n");
@@ -92,27 +101,22 @@ int main()
 }
 
 // HWI
-//void hwiLaunchpadButtonsFx(UArg arg){
-//
-//    // POLSAT S1
-//    if((P1->IFG & 0x02)){
-//        GPIO_clearInt(Board_GPIO_BUTTON0);
-//        Event_post(eventPhaseChange, Event_Id_01);
-//    }
-//
-//    // POLSAT S2
-//    if((P1->IFG & (1<<4))){
-//        GPIO_clearInt(Board_GPIO_BUTTON1);
-//        Event_post(eventPhaseChange, Event_Id_02);
-//    }
-//
+
+//void hwiPort1Fx(UArg arg){
+//    GPIO_clearInt(Board_BUTTON_S1_GPIO);
+//    GPIO_clearInt(Board_BUTTON_S2_GPIO);
+//    Event_post(eventPhaseChange, Event_Id_00);
 //}
 
-void hwiPort1Fx(UArg arg){
-    GPIO_clearInt(Board_BUTTON_S1_GPIO);
-    GPIO_clearInt(Board_BUTTON_S2_GPIO);
-    Event_post(eventPhaseChange, Event_Id_00);
-}
+//void hwiButtonS1Fx(void){
+//    GPIO_clearInt(Board_BUTTON_S1_GPIO);
+//    Event_post(eventPhaseChange, Event_Id_01);
+//}
+//
+//void hwiButtonS2Fx(void){
+//    GPIO_clearInt(Board_BUTTON_S2_GPIO);
+//    Event_post(eventPhaseChange, Event_Id_02);
+//}
 
 // TIMER
 void timerInitialAccelerationFx(UArg arg){
@@ -122,9 +126,43 @@ void timerInitialAccelerationFx(UArg arg){
 // TASK
 void taskPhaseChangeFx(UArg arg1, UArg arg2){
 
-//    int32_t timerStatus;
     uint8_t phase = 0;
     UInt events = 0;
+    //int32_t timerStatus = 0;
+
+    // INIT PWM - WILL GO INTO A SEPARATE TASK
+    // Initialize the PWM parameters
+    PWM_Params_init(&pwmParams);
+    pwmParams.idleLevel = PWM_IDLE_LOW;      // Output low when PWM is not running
+    pwmParams.periodUnits = PWM_PERIOD_US;   // Period is in us
+    pwmParams.periodValue = 100;            // 100us -> 10KHz
+    pwmParams.dutyUnits = PWM_DUTY_FRACTION; // Duty is in fractional percentage
+    pwmParams.dutyValue = 0;                 // 0% initial duty cycle
+
+    // Open the PWM instance
+    pwmA = PWM_open(PHASE_A_HIN, &pwmParams);
+    if (pwmA == NULL) {
+        System_printf("No s'ha pogut agafar el driver PWM A \n");
+        System_flush();
+        while (1);
+    }
+
+    pwmB = PWM_open(PHASE_B_HIN, &pwmParams);
+    if (pwmB == NULL) {
+        System_printf("No s'ha pogut agafar el driver PWM B \n");
+        System_flush();
+        while (1);
+    }
+
+    pwmC = PWM_open(PHASE_C_HIN, &pwmParams);
+    if (pwmC == NULL) {
+        System_printf("No s'ha pogut agafar el driver PWM C \n");
+        System_flush();
+        while (1);
+    }
+
+    // PWM duty
+    dutyValue = (uint32_t) (((uint64_t) PWM_DUTY_FRACTION_MAX * 10) / 100);
 
 
     // CUT CURRENT TO MOTOR
@@ -143,8 +181,8 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
             setPhase(phase);
 
             // Print
-            System_printf("Phase: %d \n", phase);
-            System_flush();
+            //System_printf("%d\n", phase);
+            //System_flush();
 
             break;
 
@@ -168,29 +206,15 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
 //                    System_printf("Unknown error on acceleration timer startup: %d \n", timerStatus);
 //                    System_flush();
 //                    break;
-//            } break;
+//            }
+//            break;
 //
 //            case Event_Id_02:
 //
 //                // Stop Initial acceleration timer
-//                timerStatus = Timer_stop(timerInitialAcceleration);
-//
-//                switch (timerStatus) {
-//                    case Timer_STATUS_SUCCESS:
-//                        System_printf("Motor acceleration has stop! \n");
-//                        System_flush();
-//                        break;
-//
-//                    case Timer_STATUS_ERROR:
-//                        System_printf("Error occurred on acceleration timer stop! \n");
-//                        System_flush();
-//                        break;
-//
-//                    default:
-//                        System_printf("Unknown error on acceleration timer stop: %d \n", timerStatus);
-//                        System_flush();
-//                        break;
-//                } break;
+//                Timer_stop(timerInitialAcceleration);
+//                System_printf("Motor acceleration has stoped! \n");
+//                break;
 
         default:
             System_printf("Unknown event on taskPhaseChange. Event: %d \n", events);
@@ -203,56 +227,67 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
 
 // FUNCTIONS
 void setPhase(uint8_t phase){
+
+    PWM_setDuty(pwmA, dutyValue);
+    PWM_setDuty(pwmB, dutyValue);
+    PWM_setDuty(pwmC, dutyValue);
+
     switch (phase) {
         case 1:
-            GPIO_write(PHASE_A_HIN, 1);
-            GPIO_write(PHASE_B_HIN, 0);
-            GPIO_write(PHASE_C_HIN, 0);
+            PWM_start(pwmA);
+            PWM_stop(pwmB);
+            PWM_stop(pwmC);
+
             GPIO_write(PHASE_A_LIN, 0);
             GPIO_write(PHASE_B_LIN, 1);
             GPIO_write(PHASE_C_LIN, 0);
             break;
 
         case 2:
-            GPIO_write(PHASE_A_HIN, 1);
-            GPIO_write(PHASE_B_HIN, 0);
-            GPIO_write(PHASE_C_HIN, 0);
+            PWM_start(pwmA);
+            PWM_stop(pwmB);
+            PWM_stop(pwmC);
+
             GPIO_write(PHASE_A_LIN, 0);
             GPIO_write(PHASE_B_LIN, 0);
             GPIO_write(PHASE_C_LIN, 1);
             break;
 
         case 3:
-            GPIO_write(PHASE_A_HIN, 0);
-            GPIO_write(PHASE_B_HIN, 1);
-            GPIO_write(PHASE_C_HIN, 0);
+            PWM_stop(pwmA);
+            PWM_start(pwmB);
+            PWM_stop(pwmC);
+
             GPIO_write(PHASE_A_LIN, 0);
             GPIO_write(PHASE_B_LIN, 0);
             GPIO_write(PHASE_C_LIN, 1);
             break;
 
         case 4:
-            GPIO_write(PHASE_A_HIN, 0);
-            GPIO_write(PHASE_B_HIN, 1);
-            GPIO_write(PHASE_C_HIN, 0);
+            PWM_stop(pwmA);
+            PWM_start(pwmB);
+            PWM_stop(pwmC);
+
             GPIO_write(PHASE_A_LIN, 1);
             GPIO_write(PHASE_B_LIN, 0);
             GPIO_write(PHASE_C_LIN, 0);
             break;
 
         case 5:
-            GPIO_write(PHASE_A_HIN, 0);
-            GPIO_write(PHASE_B_HIN, 0);
-            GPIO_write(PHASE_C_HIN, 1);
+            PWM_stop(pwmA);
+            PWM_stop(pwmB);
+            PWM_start(pwmC);
+
             GPIO_write(PHASE_A_LIN, 1);
             GPIO_write(PHASE_B_LIN, 0);
             GPIO_write(PHASE_C_LIN, 0);
             break;
 
         case 6:
-            GPIO_write(PHASE_A_HIN, 0);
-            GPIO_write(PHASE_B_HIN, 0);
-            GPIO_write(PHASE_C_HIN, 1);
+            PWM_stop(pwmA);
+            PWM_stop(pwmB);
+            PWM_start(pwmC);
+
             GPIO_write(PHASE_A_LIN, 0);
             GPIO_write(PHASE_B_LIN, 1);
             GPIO_write(PHASE_C_LIN, 0);
@@ -261,9 +296,10 @@ void setPhase(uint8_t phase){
         default:
 
             // CUT CURRENT TO THE MOTOR
-            GPIO_write(PHASE_A_HIN, 0);
-            GPIO_write(PHASE_B_HIN, 0);
-            GPIO_write(PHASE_C_HIN, 0);
+            PWM_stop(pwmA);
+            PWM_stop(pwmB);
+            PWM_stop(pwmC);
+
             GPIO_write(PHASE_A_LIN, 0);
             GPIO_write(PHASE_B_LIN, 0);
             GPIO_write(PHASE_C_LIN, 0);
