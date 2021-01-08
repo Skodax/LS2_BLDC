@@ -1,52 +1,81 @@
-/*
- * Copyright (c) 2019, Texas Instruments Incorporated
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions
- * are met:
- *
- * *  Redistributions of source code must retain the above copyright
- *    notice, this list of conditions and the following disclaimer.
- *
- * *  Redistributions in binary form must reproduce the above copyright
- *    notice, this list of conditions and the following disclaimer in the
- *    documentation and/or other materials provided with the distribution.
- *
- * *  Neither the name of Texas Instruments Incorporated nor the names of
- *    its contributors may be used to endorse or promote products derived
- *    from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
- * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
- * OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- * WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+/**
+ * These arguments were used when this file was generated. They will be automatically applied on subsequent loads
+ * via the GUI or CLI. Run CLI with '--help' for additional information on how to override these arguments.
+ * @cliArgs --board "/ti/boards/MSP_EXP432P401R" --product "simplelink_msp432p4_sdk@3.40.01.02"
+ * @versions {"data":"2020090214","timestamp":"2020090214","tool":"1.6.0+1543","templates":"2020090214"}
  */
-// @cliArgs --board /ti/boards/MSP_EXP432P401R
 
-/* ======== RTOS ======== */
-var RTOS = scripting.addModule("/ti/drivers/RTOS");
-RTOS.name = "TI-RTOS";
+/**
+ * Import the modules used in this configuration.
+ */
+const GPIO    = scripting.addModule("/ti/drivers/GPIO", {}, false);
+const GPIO1   = GPIO.addInstance();
+const GPIO2   = GPIO.addInstance();
+const GPIO3   = GPIO.addInstance();
+const GPIO4   = GPIO.addInstance();
+const GPIO5   = GPIO.addInstance();
+const GPIO6   = GPIO.addInstance();
+const Power   = scripting.addModule("/ti/drivers/Power");
+const RTOS    = scripting.addModule("/ti/drivers/RTOS");
+const Button  = scripting.addModule("/ti/drivers/apps/Button", {}, false);
+const Button1 = Button.addInstance();
+const Button2 = Button.addInstance();
+const LED     = scripting.addModule("/ti/drivers/apps/LED", {}, false);
+const LED1    = LED.addInstance();
 
-var Power = scripting.addModule("/ti/drivers/Power");
+/**
+ * Write custom configuration values to the imported modules.
+ */
+GPIO1.$name           = "PHASE_A_HIN";
+GPIO1.mode            = "Output";
+GPIO1.gpioPin.$assign = "expansion.24";
 
-/* ======== Board ======== */
-var board = system.deviceData.board.name;
+GPIO2.$name           = "PHASE_B_HIN";
+GPIO2.mode            = "Output";
+GPIO2.gpioPin.$assign = "expansion.26";
 
-if (board.match(/CC13.2|CC26.2/)) {
-    // Add a GPIO instance to force PIN_init() to be called.  We need to
-    // call PIN_init() before shutting down the external flash in
-    // Board_initHook().
-    var GPIO = scripting.addModule("/ti/drivers/GPIO");
-    var gpio = GPIO.addInstance();
-    gpio.$hardware = system.deviceData.board.components.LED0;
-    gpio.$name = "CONFIG_GPIO_LED_0";
-    gpio.initialOutputState = "High";
-}
+GPIO3.$name           = "PHASE_C_HIN";
+GPIO3.mode            = "Output";
+GPIO3.gpioPin.$assign = "expansion.25";
+
+GPIO4.$name              = "PHASE_A_LIN";
+GPIO4.mode               = "Output";
+GPIO4.initialOutputState = "High";
+GPIO4.gpioPin.$assign    = "expansion.7";
+
+GPIO5.$name              = "PHASE_B_LIN";
+GPIO5.mode               = "Output";
+GPIO5.initialOutputState = "High";
+GPIO5.gpioPin.$assign    = "expansion.32";
+
+GPIO6.$name              = "PHASE_C_LIN";
+GPIO6.mode               = "Output";
+GPIO6.initialOutputState = "High";
+GPIO6.gpioPin.$assign    = "expansion.31";
+
+Power.performanceLevel3.$name = "ti_drivers_power_PowerMSP432PerfLevels0";
+Power.performanceLevel2.$name = "ti_drivers_power_PowerMSP432PerfLevels1";
+Power.performanceLevel1.$name = "ti_drivers_power_PowerMSP432PerfLevels2";
+Power.performanceLevel0.$name = "ti_drivers_power_PowerMSP432PerfLevels3";
+
+
+Button1.$name         = "Board_BUTTON_S1";
+Button1.$hardware     = system.deviceData.board.components.S1;
+Button1.gpioPin.$name = "Board_BUTTON_S1_GPIO";
+
+Button2.$name         = "Board_BUTTON_S2";
+Button2.$hardware     = system.deviceData.board.components.S2;
+Button2.gpioPin.$name = "Board_BUTTON_S2_GPIO";
+
+LED1.$hardware = system.deviceData.board.components.LED1_RED;
+LED1.$name     = "Board_LED_0";
+
+/**
+ * Pinmux solution for unlocked pins/peripherals. This ensures that minor changes to the automatic solver in a future
+ * version of the tool will not impact the pinmux you originally saw.  These lines can be completely deleted in order to
+ * re-solve from scratch.
+ */
+RTOS.timer0.resource.$suggestSolution    = "Timer_A0";
+Button1.gpioPin.gpioPin.$suggestSolution = "P1.1.GPIO/EUSCI_A0_SPI.CLK";
+Button2.gpioPin.gpioPin.$suggestSolution = "P1.4.GPIO/EUSCI_B0_SPI.STE";
+LED1.gpioPin.gpioPin.$suggestSolution    = "P1.0.GPIO/EUSCI_A0_SPI.STE";
