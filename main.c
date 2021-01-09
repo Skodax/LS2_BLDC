@@ -186,6 +186,8 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                System_flush();
                break;
 
+            case (Event_Id_01 | Event_Id_02):                                   // Start motor and Stop motor (simulatneously) -> stop motor
+                System_printf("Motor Start & Stop simulatnous trigger \n");     // Todo: Remove when realease
             case Event_Id_02:
 
                 // Stop Initial acceleration timer and motor
@@ -202,7 +204,7 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                 break;
 
             default:
-                System_printf("Unknown event on taskPhaseChange. Event: %d \n", events);
+                System_printf("Unknown event on taskMotorControl. Event: %d \n", events);
                 System_flush();
                 while(1);
 
@@ -345,10 +347,10 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
     i = 0;
 
     // Humanize speed
-    float speed = 0;                            // Speed in RPM
+    int32_t speed = 0;                          // Speed in RPM
     Types_FreqHz freq;
     Timestamp_getFreq(&freq);                   // Get timestamp module freq.
-    float speedHumanize = 60 * freq.lo / 42.0;  // Constant to convert from timestamp units to RMP
+    int32_t speedHumanize = 60 * freq.lo / 42;  // Constant to convert from timestamp units to RMP
                                                 // 60 is for converting sec. to min.
                                                 // freq.lo is for converting timestamp counts to seconds
                                                 // 42 are the steps (phase changes) to complete a lap in the motor
@@ -375,7 +377,7 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
 
             time = timeAccumulated >> 5;        // Divide by the number of sumands
             speed = speedHumanize / time;                           // Convert into RPM
-            System_printf("Motor speed (RPM): %f \n", speed);       // Don't flush so execution isn't iterrupted
+            System_printf("Motor speed (RPM): %d \n", speed);       // Don't flush so execution isn't iterrupted
 
         }
 
