@@ -44,6 +44,17 @@
 
 
 /****************************************************************************************************************************************************
+ *      MACROS
+ ****************************************************************************************************************************************************/
+/* Motor phase change Events */
+#define EVENT_MOTOR_STOP            Event_Id_00
+#define EVENT_CHANGE_PHASE          Event_Id_01
+
+/* Speed calculations */
+#define TIME_BUFF_LEN               32              // Time buffer lenght for speed calculation
+#define TIME_AVG_SHIFT              5               // Shift factor for average calculation
+
+/****************************************************************************************************************************************************
  *      RTOS HANDLERS
  ****************************************************************************************************************************************************/
 
@@ -56,13 +67,20 @@ extern Event_Handle eventPhaseChange;
 extern Mailbox_Handle mbxPhaseChangeTime;
 
 /****************************************************************************************************************************************************
+ *      DIVER HANDLERS
+ ****************************************************************************************************************************************************/
+PWM_Handle PWM_A;
+PWM_Handle PWM_B;
+PWM_Handle PWM_C;
+
+/****************************************************************************************************************************************************
  *      FUNCTION DECLARATION
  ****************************************************************************************************************************************************/
 void timerInitialAccelerationFx(UArg arg);
 void timerAcceleratorFx(UArg arg);
 void taskPhaseChangeFx(UArg arg1, UArg arg2);
 void taskSpeedCalculatorFx(UArg arg1, UArg arg2);
-void setPhase(uint8_t phase, PWM_Handle pwmA, PWM_Handle pwmB, PWM_Handle pwmC);
+void setPhase(uint8_t phase);
 
 /****************************************************************************************************************************************************
  *      HWI
@@ -70,7 +88,7 @@ void setPhase(uint8_t phase, PWM_Handle pwmA, PWM_Handle pwmB, PWM_Handle pwmC);
 
 void timerInitialAccelerationFx(UArg arg){
     // CHANGE PHASE
-    Event_post(eventPhaseChange, Event_Id_01);
+    Event_post(eventPhaseChange, EVENT_CHANGE_PHASE);
 }
 
 void timerAcceleratorFx(UArg arg){
@@ -106,69 +124,56 @@ void swiAccelerateMotorFx(UArg arg1, UArg arg2){
 
 void taskPhaseChangeFx(UArg arg1, UArg arg2){
 
-    // PWM AND PHASE VARIABLES
-    PWM_Handle pwmA;
-    PWM_Handle pwmB;
-    PWM_Handle pwmC;
-    PWM_Params pwmParams;
-    uint32_t   dutyCycle;
-    uint8_t phase = 0;
+    /* PWM INITIALIZATION */
+    // Initialize the PWM parameters
+    PWM_Params PWM_params;
+    PWM_Params_init(&PWM_params);
+    PWM_params.idleLevel = PWM_IDLE_LOW;         // Output low when PWM is not running
+    PWM_params.periodUnits = PWM_PERIOD_US;      // Period is in us
+    PWM_params.periodValue = 100;                // 100us -> 10KHz
+    PWM_params.dutyUnits = PWM_DUTY_FRACTION;    // Duty is in fractional percentage
+    PWM_params.dutyValue = 0;                    // 0% initial duty cycle
 
-    // SPEED VARIABLES
+    // Open the PWM instances
+    PWM_A = PWM_open(PHASE_A_HIN, &PWM_params);
+    PWM_B = PWM_open(PHASE_B_HIN, &PWM_params);
+    PWM_C = PWM_open(PHASE_C_HIN, &PWM_params);
+
+    // Check if PWM have been opened
+    if (PWM_A == NULL || PWM_B == NULL || PWM_C == NULL) {
+        System_printf("No s'ha pogut agafar el driver per els PWM dels motors \n");
+        System_flush();
+        while (1);
+    }
+
+    /* Duty cycle and phase */
+    uint8_t phase = 0;
+    uint32_t dutyCycle;
+    dutyCycle = (uint32_t) (((uint64_t) PWM_DUTY_FRACTION_MAX * 10) / 100);     // Initial duty -> cycle 10%
+
+    /* Speed measurement */
     Bits32 tstart = 0;
     Bits32 tstop = 0;
     Bits32 tdiff = 0;
 
-    // EVENTS VARIABLES
+    /* Events */
     UInt events = 0;
 
-    // INIT PWM
-    // Initialize the PWM parameters
-    PWM_Params_init(&pwmParams);
-    pwmParams.idleLevel = PWM_IDLE_LOW;         // Output low when PWM is not running
-    pwmParams.periodUnits = PWM_PERIOD_US;      // Period is in us
-    pwmParams.periodValue = 100;                // 100us -> 10KHz
-    pwmParams.dutyUnits = PWM_DUTY_FRACTION;    // Duty is in fractional percentage
-    pwmParams.dutyValue = 0;                    // 0% initial duty cycle
+    /* Motor initialization */
+    /* Stop and cut power to the motor */
+    setPhase(0);                                                                // phase = 0, cuts power
 
-    // Open the PWM instance
-    pwmA = PWM_open(PHASE_A_HIN, &pwmParams);
-    if (pwmA == NULL) {
-        System_printf("No s'ha pogut agafar el driver PWM A \n");
-        System_flush();
-        while (1);
-    }
-
-    pwmB = PWM_open(PHASE_B_HIN, &pwmParams);
-    if (pwmB == NULL) {
-        System_printf("No s'ha pogut agafar el driver PWM B \n");
-        System_flush();
-        while (1);
-    }
-
-    pwmC = PWM_open(PHASE_C_HIN, &pwmParams);
-    if (pwmC == NULL) {
-        System_printf("No s'ha pogut agafar el driver PWM C \n");
-        System_flush();
-        while (1);
-    }
-
-    // PWM duty - Initial duty 10%
-    dutyCycle = (uint32_t) (((uint64_t) PWM_DUTY_FRACTION_MAX * 10) / 100);
-
-
-    // CUT CURRENT TO MOTOR
-    setPhase(0, pwmA, pwmB, pwmC);              // phase = 0, cuts current
-
+    /* MAIN TASK LOOP */
     while(1){
-        events = Event_pend(eventPhaseChange, Event_Id_NONE, Event_Id_00 | Event_Id_01, BIOS_WAIT_FOREVER);
 
-        PWM_setDuty(pwmA, dutyCycle);
-        PWM_setDuty(pwmB, dutyCycle);
-        PWM_setDuty(pwmC, dutyCycle);
+        /*
+         * WAIT FOR EVENTS
+         *
+         */
+        events = Event_pend(eventPhaseChange, Event_Id_NONE, EVENT_MOTOR_STOP | EVENT_CHANGE_PHASE, BIOS_WAIT_FOREVER);
 
         switch (events) {
-            case Event_Id_00:
+            case EVENT_MOTOR_STOP:
 
                 // Stop motor
                 phase = 0;
@@ -180,7 +185,7 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
 
                 break;
 
-            case Event_Id_01:
+            case EVENT_CHANGE_PHASE:
 
                 // Next phase
                 phase++;
@@ -198,13 +203,9 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
 
             default:
 
+                /* Unknown event */
                 // Stop Motor
-                setPhase(0, pwmA, pwmB, pwmC);
-
-                // Reset speed counters
-                tstart = 0;
-                tstop = 0;
-                tdiff = 0;
+                setPhase(0);
 
                 // Report error
                 System_printf("Unknown event on taskPhaseChange. Event: %d \n", events);
@@ -214,8 +215,11 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
                 while(1);
         }
 
-        // SET MOTOR PHASE
-        setPhase(phase, pwmA, pwmB, pwmC);
+        /* Motor State */
+        PWM_setDuty(PWM_A, dutyCycle);
+        PWM_setDuty(PWM_B, dutyCycle);
+        PWM_setDuty(PWM_C, dutyCycle);
+        setPhase(phase);
     }
 
 
@@ -225,13 +229,12 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
 
     // Stores time between phase changes and calculates the speed of the motor
     // Variables
-    uint8_t timeBuffLen = 32;
     uint8_t i = 0;
-    uint32_t timeBuff[timeBuffLen];
+    uint32_t timeBuff[TIME_BUFF_LEN];
     uint32_t time;
 
     // Initialitze buffer at 0 value
-    for(i = 0; i < timeBuffLen;  i++){
+    for(i = 0; i < TIME_BUFF_LEN;  i++){
         timeBuff[i] = 0;
     }
 
@@ -239,7 +242,7 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
     i = 0;
 
     // Humanize speed
-    int32_t speed = 0;                          // Speed in RPM
+    int32_t speed = 0;                          // Motor speed
     Types_FreqHz freq;
     Timestamp_getFreq(&freq);                   // Get timestamp module freq.
     int32_t speedHumanize = 60 * freq.lo / 42;  // Constant to convert from timestamp units to RMP
@@ -250,24 +253,24 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
 
     while(1){
 
-        // Get data from mailbox
+        // Get data from taskPhaseChange
         Mailbox_pend(mbxPhaseChangeTime, &time, BIOS_WAIT_FOREVER);
 
         // Buffer storage
-        timeBuff[i] = time;                     // Add new data into the buffer
-        i++;                                    // Increment buffer pointer
-        i %= timeBuffLen;                       // Keep buffer pointer (index) between 0 and 31
+        timeBuff[i] = time;                             // Add new data into the buffer
+        i++;                                            // Increment buffer pointer
+        i %= TIME_BUFF_LEN;                             // Keep buffer pointer (index) between 0 and 31
 
         // Speed calculation
-        if(!i){                                 // If buffer is full -> i = 0
-            uint32_t timeAccumulated = 0;       // Acumulation variable for average calculation
+        if(!i){                                                     // If buffer is full -> i = 0
+            uint32_t timeAccumulated = 0;                           // Acumulation variable for average calculation
 
-            for(i = 0; i < timeBuffLen; i++){   // Sum all times in the buffer
+            for(i = 0; i < TIME_BUFF_LEN; i++){                     // Sum all times in the buffer
                 timeAccumulated += timeBuff[i];
             }
-            i = 0;                              // Reset index
+            i = 0;                                                  // Reset index
 
-            time = timeAccumulated >> 5;        // Divide by the number of sumands
+            time = timeAccumulated >> TIME_AVG_SHIFT;               // Divide by the number of sumands
             speed = speedHumanize / time;                           // Convert into RPM
             System_printf("Motor speed (RPM): %d \n", speed);       // Don't flush so execution isn't iterrupted
         }
@@ -279,6 +282,7 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
  *      FUNCTIONS
  ****************************************************************************************************************************************************/
 
+/* Public */
 void BLDC_start(void){
     // Start Initial acceleration timer
     Timer_setPeriod(timerInitialAcceleration, 105);
@@ -290,20 +294,23 @@ void BLDC_stop(void){
     // Stop Initial acceleration timer and motor
     Timer_stop(timerInitialAcceleration);
     Timer_stop(timerAccelerator);
-    Event_post(eventPhaseChange, Event_Id_00);
+    Event_post(eventPhaseChange, EVENT_MOTOR_STOP);
 
     UInt32 timerPeriod;
     timerPeriod = Timer_getPeriod(timerInitialAcceleration);
     System_printf("Timer Period: %d \n", timerPeriod);
 }
 
-void setPhase(uint8_t phase, PWM_Handle pwmA, PWM_Handle pwmB, PWM_Handle pwmC){
+/* Private */
+void setPhase(uint8_t phase){
+
+
 
     switch (phase) {
         case 1:
-            PWM_start(pwmA);
-            PWM_stop(pwmB);
-            PWM_stop(pwmC);
+            PWM_start(PWM_A);
+            PWM_stop(PWM_B);
+            PWM_stop(PWM_C);
 
             GPIO_write(PHASE_A_LIN, 0);
             GPIO_write(PHASE_B_LIN, 1);
@@ -311,9 +318,9 @@ void setPhase(uint8_t phase, PWM_Handle pwmA, PWM_Handle pwmB, PWM_Handle pwmC){
             break;
 
         case 2:
-            PWM_start(pwmA);
-            PWM_stop(pwmB);
-            PWM_stop(pwmC);
+            PWM_start(PWM_A);
+            PWM_stop(PWM_B);
+            PWM_stop(PWM_C);
 
             GPIO_write(PHASE_A_LIN, 0);
             GPIO_write(PHASE_B_LIN, 0);
@@ -321,9 +328,9 @@ void setPhase(uint8_t phase, PWM_Handle pwmA, PWM_Handle pwmB, PWM_Handle pwmC){
             break;
 
         case 3:
-            PWM_stop(pwmA);
-            PWM_start(pwmB);
-            PWM_stop(pwmC);
+            PWM_stop(PWM_A);
+            PWM_start(PWM_B);
+            PWM_stop(PWM_C);
 
             GPIO_write(PHASE_A_LIN, 0);
             GPIO_write(PHASE_B_LIN, 0);
@@ -331,9 +338,9 @@ void setPhase(uint8_t phase, PWM_Handle pwmA, PWM_Handle pwmB, PWM_Handle pwmC){
             break;
 
         case 4:
-            PWM_stop(pwmA);
-            PWM_start(pwmB);
-            PWM_stop(pwmC);
+            PWM_stop(PWM_A);
+            PWM_start(PWM_B);
+            PWM_stop(PWM_C);
 
             GPIO_write(PHASE_A_LIN, 1);
             GPIO_write(PHASE_B_LIN, 0);
@@ -341,9 +348,9 @@ void setPhase(uint8_t phase, PWM_Handle pwmA, PWM_Handle pwmB, PWM_Handle pwmC){
             break;
 
         case 5:
-            PWM_stop(pwmA);
-            PWM_stop(pwmB);
-            PWM_start(pwmC);
+            PWM_stop(PWM_A);
+            PWM_stop(PWM_B);
+            PWM_start(PWM_C);
 
             GPIO_write(PHASE_A_LIN, 1);
             GPIO_write(PHASE_B_LIN, 0);
@@ -351,9 +358,9 @@ void setPhase(uint8_t phase, PWM_Handle pwmA, PWM_Handle pwmB, PWM_Handle pwmC){
             break;
 
         case 6:
-            PWM_stop(pwmA);
-            PWM_stop(pwmB);
-            PWM_start(pwmC);
+            PWM_stop(PWM_A);
+            PWM_stop(PWM_B);
+            PWM_start(PWM_C);
 
             GPIO_write(PHASE_A_LIN, 0);
             GPIO_write(PHASE_B_LIN, 1);
@@ -363,9 +370,9 @@ void setPhase(uint8_t phase, PWM_Handle pwmA, PWM_Handle pwmB, PWM_Handle pwmC){
         default:
 
             // CUT CURRENT TO THE MOTOR
-            PWM_stop(pwmA);
-            PWM_stop(pwmB);
-            PWM_stop(pwmC);
+            PWM_stop(PWM_A);
+            PWM_stop(PWM_B);
+            PWM_stop(PWM_C);
 
             GPIO_write(PHASE_A_LIN, 0);
             GPIO_write(PHASE_B_LIN, 0);
