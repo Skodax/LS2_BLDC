@@ -39,16 +39,22 @@
 #include <xdc/runtime/System.h>
 #include <xdc/runtime/Diags.h>
 #include <xdc/runtime/Log.h>
+#include <xdc/runtime/Timestamp.h>
+#include <xdc/runtime/Types.h>
 
 /* BIOS Module Headers */
 #include <ti/sysbios/BIOS.h>
+
 #include <ti/sysbios/hal/Timer.h>
 #include <ti/sysbios/hal/Hwi.h>
+
 #include <ti/sysbios/knl/Swi.h>
 #include <ti/sysbios/knl/Task.h>
 #include <ti/sysbios/knl/Idle.h>
+
 #include <ti/sysbios/knl/Event.h>
 #include <ti/sysbios/knl/Semaphore.h>
+#include <ti/sysbios/knl/Mailbox.h>
 
 /* Drivers header files */
 #include "ti_drivers_config.h"
@@ -64,16 +70,28 @@ extern Timer_Handle timerAccelerator;
 extern Swi_Handle swiAccelerateMotor;
 extern Task_Handle taskPhaseChange;
 extern Task_Handle taskMotorControl;
+extern Task_Handle taskSpeedCalculator;
 extern Event_Handle eventPhaseChange;
 extern Event_Handle eventMotorControl;
+extern Mailbox_Handle mbxPhaseChangeTime;
 
 /* Function declaration */
-//void hwiLaunchpadButtonsFx(UArg arg);
+// HWI
 void timerInitialAccelerationFx(UArg arg);
 void timerAcceleratorFx(UArg arg);
+
+// SWI
 void swiAccelerateMotorFx(UArg arg1, UArg arg2);
+
+// TASK
 void taskPhaseChangeFx(UArg arg1, UArg arg2);
 void taskMotorControlFx(UArg arg1, UArg arg2);
+void taskSpeedCalculatorFx(UArg arg1, UArg arg2);
+
+// IDLE
+//void idleReporterFx(void);
+
+// FUNCTIONS
 void setPhase(uint8_t phase, PWM_Handle pwmA, PWM_Handle pwmB, PWM_Handle pwmC);
 
 // GLOBAL
@@ -125,8 +143,8 @@ void timerAcceleratorFx(UArg arg){
 
 // SWI
 void swiAccelerateMotorFx(UArg arg1, UArg arg2){
-    // ACCELERATE MOTOR
 
+    // ACCELERATE MOTOR
     // Reduce timer period
     UInt32 timerPeriod;
     timerPeriod = Timer_getPeriod(timerInitialAcceleration);
@@ -139,8 +157,6 @@ void swiAccelerateMotorFx(UArg arg1, UArg arg2){
         Timer_stop(timerAccelerator);
     }
 
-    // Print period
-    //Event_post(eventMotorControl, Event_Id_00);
 }
 
 // TASK
@@ -196,14 +212,20 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
 
 void taskPhaseChangeFx(UArg arg1, UArg arg2){
 
-    // VARIABLES
+    // PWM AND PHASE VARIABLES
     PWM_Handle pwmA;
     PWM_Handle pwmB;
     PWM_Handle pwmC;
     PWM_Params pwmParams;
     uint32_t   dutyCycle;
-
     uint8_t phase = 0;
+
+    // SPEED VARIABLES
+    Bits32 tstart = 0;
+    Bits32 tstop = 0;
+    Bits32 tdiff = 0;
+
+    // EVENTS VARIABLES
     UInt events = 0;
 
     // INIT PWM
@@ -256,6 +278,12 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
 
                 // Stop motor
                 phase = 0;
+
+                // Reset speed counters
+                tstart = 0;
+                tstop = 0;
+                tdiff = 0;
+
                 break;
 
             case Event_Id_01:
@@ -263,12 +291,26 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
                 // Next phase
                 phase++;
                 if(phase > 6){phase = 1;}
+
+                // Time between phases (speed)
+                tstop = Timestamp_get32();
+                if(tstart){                                                     // If there's a previous phase
+                    tdiff = tstop - tstart;                                     // Time between current phase and previous phase
+                    Mailbox_post(mbxPhaseChangeTime, &tdiff, BIOS_NO_WAIT);
+                }
+
+                tstart = tstop;                     // Start counting for next phase
                 break;
 
             default:
 
                 // Stop Motor
                 setPhase(0, pwmA, pwmB, pwmC);
+
+                // Reset speed counters
+                tstart = 0;
+                tstop = 0;
+                tdiff = 0;
 
                 // Report error
                 System_printf("Unknown event on taskPhaseChange. Event: %d \n", events);
@@ -284,6 +326,67 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
 
 
 }
+
+void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
+
+    // Stores time between phase changes and calculates the speed of the motor
+    // Variables
+    uint8_t timeBuffLen = 32;
+    uint8_t i = 0;
+    uint32_t timeBuff[timeBuffLen];
+    uint32_t time;
+
+    // Initialitze buffer at 0 value
+    for(i = 0; i < timeBuffLen;  i++){
+        timeBuff[i] = 0;
+    }
+
+    // Reset counter
+    i = 0;
+
+    // Humanize speed
+    float speed = 0;                            // Speed in RPM
+    Types_FreqHz freq;
+    Timestamp_getFreq(&freq);                   // Get timestamp module freq.
+    float speedHumanize = 60 * freq.lo / 42.0;  // Constant to convert from timestamp units to RMP
+                                                // 60 is for converting sec. to min.
+                                                // freq.lo is for converting timestamp counts to seconds
+                                                // 42 are the steps (phase changes) to complete a lap in the motor
+                                                // Todo: Make sure 42 are the actual steps of the motor
+
+    while(1){
+
+        // Get data from mailbox
+        Mailbox_pend(mbxPhaseChangeTime, &time, BIOS_WAIT_FOREVER);
+
+        // Buffer storage
+        timeBuff[i] = time;                     // Add new data into the buffer
+        i++;                                    // Increment buffer pointer
+        i %= timeBuffLen;                       // Keep buffer pointer (index) between 0 and 31
+
+        // Speed calculation
+        if(!i){                                 // If buffer is full -> i = 0
+            uint32_t timeAccumulated = 0;       // Acumulation variable for average calculation
+
+            for(i = 0; i < timeBuffLen; i++){   // Sum all times in the buffer
+                timeAccumulated += timeBuff[i];
+            }
+            i = 0;                              // Reset index
+
+            time = timeAccumulated >> 5;        // Divide by the number of sumands
+            speed = speedHumanize / time;                           // Convert into RPM
+            System_printf("Motor speed (RPM): %f \n", speed);       // Don't flush so execution isn't iterrupted
+
+        }
+
+    }
+
+}
+
+// IDLE
+//void idleReporterFx(void){
+//    Log_info0("Im idle");
+//}
 
 
 // FUNCTIONS
