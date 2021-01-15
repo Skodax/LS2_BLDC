@@ -51,13 +51,15 @@
 #define EVENT_CHANGE_PHASE          Event_Id_01
 
 /* Speed calculations */
+#define STEPS_PER_LAP               43              // Motor steps per lap. Number of phase changes needed to complete a lap. Todo: Make sure 42 are the actual steps of the motor
 #define TIME_BUFF_LEN               32              // Time buffer lenght for speed calculation
 #define TIME_AVG_SHIFT              5               // Shift factor for average calculation
 
 /* Motor acceleration */
-#define MOTOR_INITIAL_PWM           10    //40
-#define MOTOR_MIN_PERIOD            35    //20
-#define MOTOR_INITIAL_ACC           5    //1
+#define MOTOR_INITIAL_PWM           10      //40
+#define MOTOR_INITIAL_PERIOD        105
+#define MOTOR_MIN_PERIOD            35      //20
+#define MOTOR_INITIAL_ACC           5       //1
 
 
 /****************************************************************************************************************************************************
@@ -226,21 +228,19 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
 
 void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
 
-    // Stores time between phase changes and calculates the speed of the motor
-    // Variables
+    /* Time buffer */
     uint8_t i = 0;
     uint32_t timeBuffa[TIME_BUFF_LEN];
     uint32_t time;
 
-    // Humanize speed
-    int32_t speed = 0;                          // Motor speed
+    /* Speed conversion */
+    int32_t speed = 0;                                      // Motor speed
     Types_FreqHz freq;
-    Timestamp_getFreq(&freq);                   // Get timestamp module freq.
-    int32_t speedHumanize = 60 * freq.lo / 42;  // Constant to convert from timestamp units to RMP
-                                                // 60 is for converting sec. to min.
-                                                // freq.lo is for converting timestamp counts to seconds
-                                                // 42 are the steps (phase changes) to complete a lap in the motor
-                                                // Todo: Make sure 42 are the actual steps of the motor
+    Timestamp_getFreq(&freq);                               // Get timestamp module freq.
+    int32_t speedHumanize = 60 * freq.lo / STEPS_PER_LAP;   // Constant to convert from timestamp units to RMP
+                                                            // 60 is for converting sec. to min.
+                                                            // freq.lo is for converting timestamp counts to seconds
+                                                            // STEPS_PER_LAP are the steps (phase changes) to complete a lap in the motor
 
     while(1){
 
@@ -269,14 +269,16 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
 
 /* Public */
 void BLDC_start(void){
-    // Start Initial acceleration timer
-    Timer_setPeriod(timerInitialAcceleration, 105);
+
+    /* Start Initial acceleration timer */
+    Timer_setPeriod(timerInitialAcceleration, MOTOR_INITIAL_PERIOD);
     Timer_start(timerInitialAcceleration);
     Timer_start(timerAccelerator);
 }
 
 void BLDC_stop(void){
-    // Stop Initial acceleration timer and motor
+
+    /* Stop Initial acceleration timer and motor */
     Timer_stop(timerInitialAcceleration);
     Timer_stop(timerAccelerator);
     Event_post(eventPhaseChange, EVENT_MOTOR_STOP);
@@ -288,8 +290,6 @@ void BLDC_stop(void){
 
 /* Private */
 void setPhase(uint8_t phase){
-
-
 
     switch (phase) {
         case 1:
