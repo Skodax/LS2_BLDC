@@ -12,11 +12,13 @@ const GPIO    = scripting.addModule("/ti/drivers/GPIO", {}, false);
 const GPIO1   = GPIO.addInstance();
 const GPIO2   = GPIO.addInstance();
 const GPIO3   = GPIO.addInstance();
+const GPIO4   = GPIO.addInstance();
+const GPIO5   = GPIO.addInstance();
+const GPIO6   = GPIO.addInstance();
 const GPIO7   = GPIO.addInstance();
 const GPIO8   = GPIO.addInstance();
-const GPIO9   = GPIO.addInstance();
-const GPIO10  = GPIO.addInstance();
-const GPIO11  = GPIO.addInstance();
+const GPIO12  = GPIO.addInstance();
+const GPIO13  = GPIO.addInstance();
 const PWM     = scripting.addModule("/ti/drivers/PWM", {}, false);
 const PWM1    = PWM.addInstance();
 const PWM2    = PWM.addInstance();
@@ -49,25 +51,37 @@ GPIO3.mode               = "Output";
 GPIO3.initialOutputState = "High";
 GPIO3.gpioPin.$assign    = "expansion.31";
 
-GPIO7.$name                         = "LCD_SCK";
-GPIO7.mode                          = "Dynamic";
-GPIO7.gpioPin.$assignAllowConflicts = "boosterpack.7";
+GPIO4.$name                         = "LCD_SCK";
+GPIO4.mode                          = "Dynamic";
+GPIO4.gpioPin.$assignAllowConflicts = "boosterpack.7";
 
-GPIO8.$name                         = "LCD_MOSI";
-GPIO8.mode                          = "Dynamic";
-GPIO8.gpioPin.$assignAllowConflicts = "boosterpack.15";
+GPIO5.$name                         = "LCD_MOSI";
+GPIO5.mode                          = "Dynamic";
+GPIO5.gpioPin.$assignAllowConflicts = "boosterpack.15";
 
-GPIO9.$name           = "LCD_CS";
-GPIO9.mode            = "Dynamic";
-GPIO9.gpioPin.$assign = "boosterpack.13";
+GPIO6.$name           = "LCD_CS";
+GPIO6.mode            = "Dynamic";
+GPIO6.gpioPin.$assign = "boosterpack.13";
 
-GPIO10.$name           = "LCD_RST";
-GPIO10.mode            = "Dynamic";
-GPIO10.gpioPin.$assign = "boosterpack.17";
+GPIO7.$name           = "LCD_RST";
+GPIO7.mode            = "Dynamic";
+GPIO7.gpioPin.$assign = "boosterpack.17";
 
-GPIO11.$name           = "LCD_DC";
-GPIO11.mode            = "Dynamic";
-GPIO11.gpioPin.$assign = "boosterpack.31";
+GPIO8.$name           = "LCD_DC";
+GPIO8.mode            = "Dynamic";
+GPIO8.gpioPin.$assign = "boosterpack.31";
+
+GPIO12.$name            = "MKII_BUTTON1_GPIO";
+GPIO12.pull             = "Pull Up";
+GPIO12.interruptTrigger = "Falling Edge";
+GPIO12.callbackFunction = "hwiMkiiButton1Fx";
+GPIO12.gpioPin.$assign  = "boosterpack.33";
+
+GPIO13.pull             = "Pull Up";
+GPIO13.interruptTrigger = "Falling Edge";
+GPIO13.$name            = "MKII_BUTTON2_GPIO";
+GPIO13.callbackFunction = "hwiMkiiButton2Fx";
+GPIO13.gpioPin.$assign  = "boosterpack.32";
 
 PWM1.$name                = "PHASE_A_HIN";
 PWM1.timer.$assign        = "Timer_A1";

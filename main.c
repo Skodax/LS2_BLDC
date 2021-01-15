@@ -70,19 +70,12 @@ extern Event_Handle eventMotorControl;
 
 /* User libraries */
 #include "library/BLDC/BLDC_driver.h"
+#include "library/LCD/LCD.h"
 
 
 
 /* Function declaration */
-// HWI
-void timerInitialAccelerationFx(UArg arg);
-void timerAcceleratorFx(UArg arg);
-
-
-// TASK
 void taskMotorControlFx(UArg arg1, UArg arg2);
-
-// GLOBAL
 
 /*
  *  ======== main ========
@@ -97,6 +90,8 @@ int main()
     /* Enable interrupts */
     GPIO_enableInt(Board_BUTTON_S1_GPIO);
     GPIO_enableInt(Board_BUTTON_S2_GPIO);
+    GPIO_enableInt(MKII_BUTTON1_GPIO);
+    GPIO_enableInt(MKII_BUTTON2_GPIO);
 
     /* Start msg */
     System_printf("Starting... \n");
@@ -114,8 +109,18 @@ void hwiButtonS1Fx(void){
     Event_post(eventMotorControl, Event_Id_01);
 }
 
+void hwiMkiiButton2Fx(void){
+    GPIO_clearInt(MKII_BUTTON2_GPIO);
+    Event_post(eventMotorControl, Event_Id_01);
+}
+
 void hwiButtonS2Fx(void){
     GPIO_clearInt(Board_BUTTON_S2_GPIO);
+    Event_post(eventMotorControl, Event_Id_02);
+}
+
+void hwiMkiiButton1Fx(void){
+    GPIO_clearInt(MKII_BUTTON1_GPIO);
     Event_post(eventMotorControl, Event_Id_02);
 }
 
