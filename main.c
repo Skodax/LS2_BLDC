@@ -69,7 +69,7 @@ extern Task_Handle taskMotorControl;
 extern Event_Handle eventMotorControl;
 
 /* User libraries */
-#include "library/BLDC_driver.h"
+#include "library/BLDC/BLDC_driver.h"
 
 
 
