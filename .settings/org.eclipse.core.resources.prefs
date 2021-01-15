@@ -1,6 +1,8 @@
 eclipse.preferences.version=1
 encoding//Debug/library/BLDC/subdir_rules.mk=UTF-8
 encoding//Debug/library/BLDC/subdir_vars.mk=UTF-8
+encoding//Debug/library/LcdDriver/subdir_rules.mk=UTF-8
+encoding//Debug/library/LcdDriver/subdir_vars.mk=UTF-8
 encoding//Debug/library/subdir_rules.mk=UTF-8
 encoding//Debug/library/subdir_vars.mk=UTF-8
 encoding//Debug/makefile=UTF-8

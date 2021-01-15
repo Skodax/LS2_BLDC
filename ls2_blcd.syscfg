@@ -12,12 +12,19 @@ const GPIO    = scripting.addModule("/ti/drivers/GPIO", {}, false);
 const GPIO1   = GPIO.addInstance();
 const GPIO2   = GPIO.addInstance();
 const GPIO3   = GPIO.addInstance();
+const GPIO7   = GPIO.addInstance();
+const GPIO8   = GPIO.addInstance();
+const GPIO9   = GPIO.addInstance();
+const GPIO10  = GPIO.addInstance();
+const GPIO11  = GPIO.addInstance();
 const PWM     = scripting.addModule("/ti/drivers/PWM", {}, false);
 const PWM1    = PWM.addInstance();
 const PWM2    = PWM.addInstance();
 const PWM3    = PWM.addInstance();
 const Power   = scripting.addModule("/ti/drivers/Power");
 const RTOS    = scripting.addModule("/ti/drivers/RTOS");
+const SPI     = scripting.addModule("/ti/drivers/SPI", {}, false);
+const SPI1    = SPI.addInstance();
 const Button  = scripting.addModule("/ti/drivers/apps/Button", {}, false);
 const Button1 = Button.addInstance();
 const Button2 = Button.addInstance();
@@ -42,6 +49,26 @@ GPIO3.mode               = "Output";
 GPIO3.initialOutputState = "High";
 GPIO3.gpioPin.$assign    = "expansion.31";
 
+GPIO7.$name                         = "LCD_SCK";
+GPIO7.mode                          = "Dynamic";
+GPIO7.gpioPin.$assignAllowConflicts = "boosterpack.7";
+
+GPIO8.$name                         = "LCD_MOSI";
+GPIO8.mode                          = "Dynamic";
+GPIO8.gpioPin.$assignAllowConflicts = "boosterpack.15";
+
+GPIO9.$name           = "LCD_CS";
+GPIO9.mode            = "Dynamic";
+GPIO9.gpioPin.$assign = "boosterpack.13";
+
+GPIO10.$name           = "LCD_RST";
+GPIO10.mode            = "Dynamic";
+GPIO10.gpioPin.$assign = "boosterpack.17";
+
+GPIO11.$name           = "LCD_DC";
+GPIO11.mode            = "Dynamic";
+GPIO11.gpioPin.$assign = "boosterpack.31";
+
 PWM1.$name                = "PHASE_A_HIN";
 PWM1.timer.$assign        = "Timer_A1";
 PWM1.timer.pwmPin.$assign = "expansion.24";
@@ -59,6 +86,16 @@ Power.performanceLevel2.$name = "ti_drivers_power_PowerMSP432PerfLevels1";
 Power.performanceLevel1.$name = "ti_drivers_power_PowerMSP432PerfLevels2";
 Power.performanceLevel0.$name = "ti_drivers_power_PowerMSP432PerfLevels3";
 
+
+SPI1.$name                             = "LCD_EUSCI_BASE";
+SPI1.defaultTxBufferValue              = "0xFF";
+SPI1.spi.$assign                       = "EUSCI_B0";
+SPI1.spi.sclkPin.$assignAllowConflicts = "boosterpack.7";
+SPI1.spi.misoPin.$assign               = "boosterpack.14";
+SPI1.spi.mosiPin.$assignAllowConflicts = "boosterpack.15";
+SPI1.spi.dmaRxChannel.$assign          = "DMA_CH1";
+SPI1.spi.dmaTxChannel.$assign          = "DMA_CH0";
+SPI1.spi.dmaInterruptNumber.$assign    = "DMA_INT1";
 
 Button1.$name                    = "Board_BUTTON_S1";
 Button1.$hardware                = system.deviceData.board.components.S1;
