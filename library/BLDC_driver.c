@@ -54,6 +54,12 @@
 #define TIME_BUFF_LEN               32              // Time buffer lenght for speed calculation
 #define TIME_AVG_SHIFT              5               // Shift factor for average calculation
 
+/* Motor acceleration */
+#define MOTOR_INITIAL_PWM           10    //40
+#define MOTOR_MIN_PERIOD            35    //20
+#define MOTOR_INITIAL_ACC           5    //1
+
+
 /****************************************************************************************************************************************************
  *      RTOS HANDLERS
  ****************************************************************************************************************************************************/
@@ -106,9 +112,9 @@ void swiAccelerateMotorFx(UArg arg1, UArg arg2){
     // Reduce timer period
     UInt32 timerPeriod;
     timerPeriod = Timer_getPeriod(timerInitialAcceleration);
-    timerPeriod -= 5;
+    timerPeriod -= MOTOR_INITIAL_ACC;       // 5
 
-    if(timerPeriod > 35){
+    if(timerPeriod > MOTOR_MIN_PERIOD){   // 35
         Timer_setPeriod(timerInitialAcceleration, timerPeriod);
         Timer_start(timerInitialAcceleration);
     } else {
@@ -149,12 +155,7 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
     /* Duty cycle and phase */
     uint8_t phase = 0;
     uint32_t dutyCycle;
-    dutyCycle = (uint32_t) (((uint64_t) PWM_DUTY_FRACTION_MAX * 10) / 100);     // Initial duty -> cycle 10%
-
-    /* Speed measurement */
-    Bits32 tstart = 0;
-    Bits32 tstop = 0;
-    Bits32 tdiff = 0;
+    dutyCycle = (uint32_t) (((uint64_t) PWM_DUTY_FRACTION_MAX * MOTOR_INITIAL_PWM) / 100);     // Initial duty -> cycle 10%
 
     /* Events */
     UInt events = 0;
@@ -163,66 +164,64 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
     /* Stop and cut power to the motor */
     setPhase(0);                                                                // phase = 0, cuts power
 
+    /* Speed measurement */
+    uint32_t tstart, tstop = 0;                                                 // Timestamps store
+    uint32_t timeBuff[TIME_BUFF_LEN];                                           // Phase change times buffer
+    uint8_t i = 0;                                                              // Buffer index
+
     /* MAIN TASK LOOP */
     while(1){
 
         /*
          * WAIT FOR EVENTS
-         *
+         *  - EVENT_MOTOR_STOP:     Stop the motor
+         *  - EVENT_CHANGE_PHASE:   Switches to next phase of the motor
          */
         events = Event_pend(eventPhaseChange, Event_Id_NONE, EVENT_MOTOR_STOP | EVENT_CHANGE_PHASE, BIOS_WAIT_FOREVER);
 
-        switch (events) {
-            case EVENT_MOTOR_STOP:
+        /* EVENT ACTIONS */
+        if(events & EVENT_MOTOR_STOP){
 
-                // Stop motor
-                phase = 0;
+            /* Reset state */
+            phase = tstart = tstop = i = 0;                                         // Reset phase and speed calculating parameters
+            setPhase(phase);                                                        // Stop motor
 
-                // Reset speed counters
-                tstart = 0;
-                tstop = 0;
-                tdiff = 0;
+        } else if (events & EVENT_CHANGE_PHASE){
 
-                break;
+            /* Phase change */
+            phase++;
+            if(phase > 6){phase = 1;}
 
-            case EVENT_CHANGE_PHASE:
+            /* Time between phase changes */
+            tstop = Timestamp_get32();
+            if(tstart){                                                             // If there's a previous phase
+                timeBuff[i] = tstop - tstart;                                       // Time between current phase and previous phase
 
-                // Next phase
-                phase++;
-                if(phase > 6){phase = 1;}
+                i++;                                                                // Increment buffer index
+                i %= TIME_BUFF_LEN;                                                 // Keep index between 0 and TIME_BUFF_LEN
 
-                // Time between phases (speed)
-                tstop = Timestamp_get32();
-                if(tstart){                                                     // If there's a previous phase
-                    tdiff = tstop - tstart;                                     // Time between current phase and previous phase
-                    Mailbox_post(mbxPhaseChangeTime, &tdiff, BIOS_NO_WAIT);
+                if(!i){                                                             // If buffer is full
+                    Mailbox_post(mbxPhaseChangeTime, timeBuff, BIOS_NO_WAIT);       // Then send it to speed calculator
                 }
+            }
+            tstart = tstop;                                                         // Start counting for next phase
 
-                tstart = tstop;                     // Start counting for next phase
-                break;
+            /* Motor State */
+            PWM_setDuty(PWM_A, dutyCycle);
+            PWM_setDuty(PWM_B, dutyCycle);
+            PWM_setDuty(PWM_C, dutyCycle);
+            setPhase(phase);
 
-            default:
+        } else {
 
-                /* Unknown event */
-                // Stop Motor
-                setPhase(0);
+            /* Unknown event */
+            setPhase(0);                                                                // Stop motor
+            System_printf("Unknown event on taskPhaseChange. Event: %d \n", events);    // Report error
+            System_flush();
+            while(1);                                                                   // Halts program. Todo: Change to System_abort
 
-                // Report error
-                System_printf("Unknown event on taskPhaseChange. Event: %d \n", events);
-                System_flush();
-
-                // Program halt
-                while(1);
         }
-
-        /* Motor State */
-        PWM_setDuty(PWM_A, dutyCycle);
-        PWM_setDuty(PWM_B, dutyCycle);
-        PWM_setDuty(PWM_C, dutyCycle);
-        setPhase(phase);
     }
-
-
 }
 
 void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
@@ -230,16 +229,8 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
     // Stores time between phase changes and calculates the speed of the motor
     // Variables
     uint8_t i = 0;
-    uint32_t timeBuff[TIME_BUFF_LEN];
+    uint32_t timeBuffa[TIME_BUFF_LEN];
     uint32_t time;
-
-    // Initialitze buffer at 0 value
-    for(i = 0; i < TIME_BUFF_LEN;  i++){
-        timeBuff[i] = 0;
-    }
-
-    // Reset counter
-    i = 0;
 
     // Humanize speed
     int32_t speed = 0;                          // Motor speed
@@ -253,27 +244,21 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
 
     while(1){
 
-        // Get data from taskPhaseChange
-        Mailbox_pend(mbxPhaseChangeTime, &time, BIOS_WAIT_FOREVER);
+        /* Get time buffer from taskPhaseChange */
+        Mailbox_pend(mbxPhaseChangeTime, timeBuffa, BIOS_WAIT_FOREVER);
 
-        // Buffer storage
-        timeBuff[i] = time;                             // Add new data into the buffer
-        i++;                                            // Increment buffer pointer
-        i %= TIME_BUFF_LEN;                             // Keep buffer pointer (index) between 0 and 31
-
-        // Speed calculation
-        if(!i){                                                     // If buffer is full -> i = 0
-            uint32_t timeAccumulated = 0;                           // Acumulation variable for average calculation
-
-            for(i = 0; i < TIME_BUFF_LEN; i++){                     // Sum all times in the buffer
-                timeAccumulated += timeBuff[i];
-            }
-            i = 0;                                                  // Reset index
-
-            time = timeAccumulated >> TIME_AVG_SHIFT;               // Divide by the number of sumands
-            speed = speedHumanize / time;                           // Convert into RPM
-            System_printf("Motor speed (RPM): %d \n", speed);       // Don't flush so execution isn't iterrupted
+        /* Average calculation */
+        time = 0;                                               // Reset accumulator
+        for(i = 0; i < TIME_BUFF_LEN; i++){                     // Sum all times in the buffer
+            time += timeBuffa[i];
         }
+
+        time >>= TIME_AVG_SHIFT;                                // Divide by the number of sumands
+
+        /* Print speed */
+        speed = speedHumanize / time;                           // Convert into RPM
+        System_printf("Motor speed (RPM): %d \n", speed);       // Don't flush so execution isn't iterrupted
+
     }
 }
 

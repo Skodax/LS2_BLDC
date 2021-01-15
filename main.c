@@ -82,12 +82,6 @@ void timerAcceleratorFx(UArg arg);
 // TASK
 void taskMotorControlFx(UArg arg1, UArg arg2);
 
-// IDLE
-//void idleReporterFx(void);
-
-// FUNCTIONS
-void setPhase(uint8_t phase, PWM_Handle pwmA, PWM_Handle pwmB, PWM_Handle pwmC);
-
 // GLOBAL
 
 /*
