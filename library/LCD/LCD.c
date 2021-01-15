@@ -38,6 +38,12 @@
 /* Drivers header files */
 #include "ti_drivers_config.h"
 #include <ti/drivers/GPIO.h>
+#include <ti/drivers/SPI.h>
+
+/* LCD header files */
+#include <ti/grlib/grlib.h>
+#include "../LcdDriver/Crystalfontz128x128_ST7735.h"
+#include <stdio.h>
 
 /* Board header files */
 #include <ti/drivers/Board.h>
@@ -46,6 +52,28 @@
 /****************************************************************************************************************************************************
  *      MACROS
  ****************************************************************************************************************************************************/
+#define CTX                                         g_sContext                  // Context
+#define CTXP                                        &CTX                        // Context pointer
+
+#define DISPLAY_LEFT_MARGIN                         5                           // Left margin
+#define DISPLAY_LEFT_EDGE                           DISPLAY_LEFT_MARGIN         // Left edge
+#define DISPLAY_RIGHT_MARGIN                        5                           // Right margin
+#define DISPLAY_RIGHT_EDGE                          LCD_HORIZONTAL_MAX - DISPLAY_RIGHT_MARGIN
+
+#define FONT_TITLE                                  &g_sFontCmss18b             // Font used for titles
+#define FONT_NORMAL                                 &g_sFontCmss14              // Font used for the main text
+#define FONT_SMALL                                  &g_sFontCmss12              // Font used for secondary text
+
+#define COLOR_BACKGROUND                            GRAPHICS_COLOR_BLACK        // Color used for LCD background
+#define COLOR_HEADER_BACKGROUND                     GRAPHICS_COLOR_RED          // Color used for Header background
+#define COLOR_TEXT                                  GRAPHICS_COLOR_WHITE        // Color used for the main text
+#define COLOR_TEXT_MUTED                            GRAPHICS_COLOR_WHITE_SMOKE  // Color used for secondary text
+
+/****************************************************************************************************************************************************
+ *      DISPLAY HANDLERS
+ ****************************************************************************************************************************************************/
+Graphics_Context CTX;
+Graphics_Rectangle header = {0,0, LCD_HORIZONTAL_MAX, 30};                  // Display header background
 
 /****************************************************************************************************************************************************
  *      RTOS HANDLERS
@@ -53,16 +81,82 @@
 extern Task_Handle taskLcd;
 
 /****************************************************************************************************************************************************
+ *      DIVER HANDLERS
+ ****************************************************************************************************************************************************/
+SPI_Handle spi;
+
+/****************************************************************************************************************************************************
  *      FUNCTION DECLARATION
  ****************************************************************************************************************************************************/
 void taskLcdFx(UArg arg0, UArg arg1);
+void drawHeader(int8_t *string);
+void drawTheoricalSpeed();
 
 /****************************************************************************************************************************************************
  *      TASK
  ****************************************************************************************************************************************************/
 void taskLcdFx(UArg arg0, UArg arg1){
-//    while(1){
-//        System_printf("Im alive");
-//        System_flush();
-//    }
+
+    /* LCD initialize */
+    Crystalfontz128x128_Init();
+    Crystalfontz128x128_SetOrientation(LCD_ORIENTATION_DOWN);                                   // Turn LCD, user will see it from below
+
+    /* Initializes graphics context */
+   Graphics_initContext(CTXP, &g_sCrystalfontz128x128, &g_sCrystalfontz128x128_funcs);
+   Graphics_setForegroundColor(CTXP, COLOR_TEXT);
+   Graphics_setBackgroundColor(CTXP, COLOR_BACKGROUND);
+   Graphics_clearDisplay(CTXP);
+
+   drawHeader((int8_t *)"BLDC Motor");
+   drawTheoricalSpeed();
+
+
+
 }
+
+/****************************************************************************************************************************************************
+ *      FUNCTIONS
+ ****************************************************************************************************************************************************/
+
+void drawHeader(int8_t *string){
+
+    /* Header background */
+    Graphics_setForegroundColor(CTXP, COLOR_HEADER_BACKGROUND);
+    Graphics_drawRectangle(CTXP, &header);
+    Graphics_fillRectangle(CTXP, &header);
+
+    /* Title */
+    Graphics_setFont(CTXP, FONT_TITLE);
+    Graphics_setForegroundColor(CTXP, COLOR_BACKGROUND);
+    Graphics_drawStringCentered(CTXP,
+                                    string,
+                                    AUTO_STRING_LENGTH,
+                                    64,
+                                    15,
+                                    TRANSPARENT_TEXT);
+    Graphics_setForegroundColor(CTXP, COLOR_TEXT);
+}
+
+void drawTheoricalSpeed(){
+
+    /* Label and line */
+    Graphics_setFont(CTXP, FONT_SMALL);
+    Graphics_setForegroundColor(CTXP, COLOR_TEXT_MUTED);
+    Graphics_drawString(CTXP, (int8_t *)"Theorical speed", AUTO_STRING_LENGTH, 5, 40, TRANSPARENT_TEXT);
+    Graphics_drawLineH(CTXP, DISPLAY_LEFT_EDGE, DISPLAY_RIGHT_EDGE, 55);
+
+    /* Speed units */
+    uint32_t unitsX = DISPLAY_RIGHT_EDGE;
+    unitsX -= Graphics_getStringWidth(CTXP, (int8_t *)"RPM", AUTO_STRING_LENGTH);
+    Graphics_drawString(CTXP, (int8_t *)"RPM", AUTO_STRING_LENGTH, unitsX, 65, TRANSPARENT_TEXT);
+
+    /* Speed magnitude */
+    Graphics_setFont(CTXP, FONT_NORMAL);
+    Graphics_setForegroundColor(CTXP, COLOR_TEXT);
+    uint32_t speedX = unitsX - DISPLAY_LEFT_EDGE;
+    speedX -= Graphics_getStringWidth(CTXP, (int8_t *)"0", AUTO_STRING_LENGTH);
+    Graphics_drawString(CTXP, (int8_t *)"0", AUTO_STRING_LENGTH, speedX, 65, TRANSPARENT_TEXT);
+
+
+}
+
