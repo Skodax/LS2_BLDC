@@ -50,6 +50,10 @@
 #define EVENT_MOTOR_STOP            Event_Id_00
 #define EVENT_CHANGE_PHASE          Event_Id_01
 
+/* Speed calculation Events */
+#define EVENT_MBX_TIME              Event_Id_00
+#define EVENT_SPEED_0               Event_Id_01
+
 /* Speed calculations */
 #define STEPS_PER_LAP               43              // Motor steps per lap. Number of phase changes needed to complete a lap. Todo: Make sure 42 are the actual steps of the motor
 #define TIME_BUFF_LEN               32              // Time buffer lenght for speed calculation
@@ -72,7 +76,9 @@ extern Swi_Handle swiAccelerateMotor;
 extern Task_Handle taskPhaseChange;
 extern Task_Handle taskSpeedCalculator;
 extern Event_Handle eventPhaseChange;
+extern Event_Handle eventSpeed;
 extern Mailbox_Handle mbxPhaseChangeTime;
+extern Mailbox_Handle mbxTheoricalSpeed;
 
 /****************************************************************************************************************************************************
  *      DIVER HANDLERS
@@ -228,6 +234,9 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
 
 void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
 
+    /* Events */
+    uint32_t events;
+
     /* Time buffer */
     uint8_t i = 0;
     uint32_t timeBuffa[TIME_BUFF_LEN];
@@ -244,20 +253,38 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
 
     while(1){
 
-        /* Get time buffer from taskPhaseChange */
-        Mailbox_pend(mbxPhaseChangeTime, timeBuffa, BIOS_WAIT_FOREVER);
+        events = Event_pend(eventSpeed, Event_Id_NONE, EVENT_SPEED_0 | EVENT_MBX_TIME, BIOS_WAIT_FOREVER);
 
-        /* Average calculation */
-        time = 0;                                               // Reset accumulator
-        for(i = 0; i < TIME_BUFF_LEN; i++){                     // Sum all times in the buffer
-            time += timeBuffa[i];
+        if(events & EVENT_SPEED_0){
+
+            /* Send speed */
+            speed = 0;                                                  // Convert into RPM
+
+        } else if(events & EVENT_MBX_TIME){
+
+            /* Get time buffer from taskPhaseChange */
+            Bool hasMsg = Mailbox_pend(mbxPhaseChangeTime, timeBuffa, BIOS_NO_WAIT);
+            if(!hasMsg){
+                System_printf("Mailbox buit. Program halt \n");
+                System_flush();
+                while(1);
+            }
+
+            /* Average calculation */
+            time = 0;                                                   // Reset accumulator
+            for(i = 0; i < TIME_BUFF_LEN; i++){                         // Sum all times in the buffer
+                time += timeBuffa[i];
+            }
+
+            time >>= TIME_AVG_SHIFT;                                    // Divide by the number of sumands
+
+            /* RPM conversion */
+            speed = speedHumanize / time;                               // Convert into RPM
         }
 
-        time >>= TIME_AVG_SHIFT;                                // Divide by the number of sumands
-
-        /* Print speed */
-        speed = speedHumanize / time;                           // Convert into RPM
-        System_printf("Motor speed (RPM): %d \n", speed);       // Don't flush so execution isn't iterrupted
+        /* Send speed */
+        Mailbox_post(mbxTheoricalSpeed, &speed, BIOS_NO_WAIT);      // Send data to LCD
+        //System_printf("Motor speed (RPM): %d \n", speed);         // Don't flush so execution isn't iterrupted
 
     }
 }
@@ -362,6 +389,9 @@ void setPhase(uint8_t phase){
             GPIO_write(PHASE_A_LIN, 0);
             GPIO_write(PHASE_B_LIN, 0);
             GPIO_write(PHASE_C_LIN, 0);
+
+            // Set speed tot 0
+            Event_post(eventSpeed, EVENT_SPEED_0);
 
             //Todo: Remove when release
             System_printf("Phase: CUT CURRENT \n");
