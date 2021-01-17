@@ -258,7 +258,8 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
         if(events & EVENT_SPEED_0){
 
             /* Send speed */
-            speed = 0;                                                  // Convert into RPM
+            speed = 0;                                                      // Motor has stoped
+            Mailbox_post(mbxTheoricalSpeed, &speed, BIOS_WAIT_FOREVER);     // Wait until speed can be printed
 
         } else if(events & EVENT_MBX_TIME){
 
@@ -280,10 +281,11 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
 
             /* RPM conversion */
             speed = speedHumanize / time;                               // Convert into RPM
+
+            /* Send speed */
+            Mailbox_post(mbxTheoricalSpeed, &speed, BIOS_NO_WAIT);      // Send data to LCD
         }
 
-        /* Send speed */
-        Mailbox_post(mbxTheoricalSpeed, &speed, BIOS_NO_WAIT);      // Send data to LCD
         //System_printf("Motor speed (RPM): %d \n", speed);         // Don't flush so execution isn't iterrupted
 
     }
