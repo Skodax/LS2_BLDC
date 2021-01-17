@@ -84,13 +84,21 @@
 /* Pages parameters */
 #define PAGE_MOTOR                                  0
 #define PAGE_JOYSTICK                               1
-#define PAGE_DEFAULT                                PAGE_JOYSTICK
+#define PAGE_DEFAULT                                PAGE_MOTOR
+#define PAGE_COUNT                                  2
+#define PAGE_BLOCK                                  0
+#define PAGE_NO_BLOCK                               1
 
+/* Events */
+
+#define EVENT_THEORICAL_SPEED                       Event_Id_00
+#define EVENT_JOYSTICK_DATA                         Event_Id_02
 /* Speed parameters */
 #define SPEED_LEN                                   7                           // Speed string length
 
 /* Joystick parameters */
 #define JOYSTICK_LEN                                6
+#define JOYSTICK_THRESHOLD                          90
 
 /****************************************************************************************************************************************************
  *      DISPLAY HANDLERS
@@ -119,6 +127,7 @@ DataCard_Handle joystickYHdl;                                               // J
  *      RTOS HANDLERS
  ****************************************************************************************************************************************************/
 extern Task_Handle taskLcd;
+extern Event_Handle eventLCD;
 extern Mailbox_Handle mbxTheoricalSpeed;
 extern Mailbox_Handle mbxJoystick;
 /****************************************************************************************************************************************************
@@ -146,8 +155,11 @@ void taskLcdFx(UArg arg0, UArg arg1){
     Crystalfontz128x128_SetOrientation(LCD_ORIENTATION_DOWN);                                   // Turn LCD, user will see it from below
     Graphics_initContext(CTXP, &g_sCrystalfontz128x128, &g_sCrystalfontz128x128_funcs);         // Initialize graphic context
 
-   /* Page */
-   uint8_t page = PAGE_DEFAULT;                                                                 // Start with the default page
+   /* Page and Events */
+   int8_t page = PAGE_DEFAULT;                                                                  // Start with the default page
+   uint8_t pageUnblocked = PAGE_BLOCK;                                                          // Block page change
+   uint32_t events;                                                                             // LCD refresh trigger events
+   uint32_t eventOrMask;                                                                        // Each page depends on different events this mask will listen only to the current page
 
    /* Theorical Speed */
    uint32_t theroricalSpeed = 0;                                                                // Speed calculated from the commands sent to the motor
@@ -169,38 +181,79 @@ void taskLcdFx(UArg arg0, UArg arg1){
       switch (page) {
         case PAGE_MOTOR:
             pageMotorTemplate();
+            eventOrMask = EVENT_THEORICAL_SPEED | EVENT_JOYSTICK_DATA;
             break;
 
         case PAGE_JOYSTICK:
             pageJoystickTemplate();
+            eventOrMask = EVENT_JOYSTICK_DATA;
             break;
+
         default:
+            System_printf("LCD unrecognized page\n");
+            System_flush();
             break;
       }
 
       /* Page loop */
       // Only refresh necessary data
       while(1){
+
+          /* Wait only for events needed by the current page */
+          events = Event_pend(eventLCD, Event_Id_NONE, eventOrMask, BIOS_WAIT_FOREVER);
+
+          /* Get joystick data for page control */
+          Mailbox_pend(mbxJoystick, &joystick, BIOS_NO_WAIT);
+
+          /* Page refresh */
           switch (page) {
             case PAGE_MOTOR:
 
-               Mailbox_pend(mbxTheoricalSpeed, &theroricalSpeed, BIOS_WAIT_FOREVER);                    // Wait and get theorical speed
-               sprintf(theoricalSpeedStr, "%7d", theroricalSpeed);                                      // Convert to string (right align the number and fill str. with trailing spaces)
-               drawDataCardValue(&theoricalSpeedHdl, (int8_t *) theoricalSpeedStr);                     // Refresh theorical speed value
+               if(events & EVENT_THEORICAL_SPEED){
+                   Mailbox_pend(mbxTheoricalSpeed, &theroricalSpeed, BIOS_NO_WAIT);                         // Wait and get theorical speed
+                   sprintf(theoricalSpeedStr, "%7d", theroricalSpeed);                                      // Convert to string (right align the number and fill str. with trailing spaces)
+                   drawDataCardValue(&theoricalSpeedHdl, (int8_t *) theoricalSpeedStr);                     // Refresh theorical speed value
+               }
                break;
 
             case PAGE_JOYSTICK:
 
-                Mailbox_pend(mbxJoystick, &joystick, BIOS_WAIT_FOREVER);
-                sprintf(joystickXStr, "%4d", joystick.x);
-                sprintf(joystickYStr, "%4d", joystick.y);
-                drawDataCardValue(&joystickXHdl, (int8_t *) joystickXStr);
-                drawDataCardValue(&joystickYHdl, (int8_t *) joystickYStr);
+                if(events & EVENT_JOYSTICK_DATA){
+                    sprintf(joystickXStr, "%4d", joystick.x);
+                    sprintf(joystickYStr, "%4d", joystick.y);
+                    drawDataCardValue(&joystickXHdl, (int8_t *) joystickXStr);
+                    drawDataCardValue(&joystickYHdl, (int8_t *) joystickYStr);
+                }
                 break;
 
             default:
+                System_printf("LCD unrecognized page\n");
+                System_flush();
                 break;
         }
+
+          /* Page control */
+          if(joystick.x > JOYSTICK_THRESHOLD){
+
+              if(!pageUnblocked){continue;}                                                                 // If page change is blocked skip next lines of code
+
+              page++;                                                                                       // Next page when Joystick is pushed to the right
+              page %= PAGE_COUNT;                                                                           // Cycle trough pages
+              pageUnblocked = PAGE_BLOCK;                                                                   // To avoid multiple page changes
+              break;                                                                                        // Break while loop (redraw entire page)
+
+          } else if(joystick.x < -JOYSTICK_THRESHOLD){
+
+              if(!pageUnblocked){continue;}                                                                 // If page change is blocked skip next lines of code
+
+              page--;                                                                                       // Previous page when Joystick is pushed to the right
+              if(page < 0){page = PAGE_COUNT-1;}                                                            // Cycle trough pages
+              pageUnblocked = PAGE_BLOCK;                                                                   // To avoid multiple page changes
+              break;                                                                                        // Break while loop (redraw entire page)
+
+          } else {
+              pageUnblocked = PAGE_NO_BLOCK;                                                                // When joystick is out of the change page range then unblock the page change
+          }
       }
 
    }
@@ -293,6 +346,7 @@ void pageMotorTemplate(){
                     40,                                                                          // Card y coord.
                     DATA_CARD_TYPE_NORMAL                                                        // Data below the label
                 );
+    drawDataCardValue(&theoricalSpeedHdl, (int8_t *) "0");                                      // By default write 0 speed
 }
 
 void pageJoystickTemplate(){
