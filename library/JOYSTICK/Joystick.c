@@ -135,21 +135,22 @@ void taskJoystickReadFx(UArg arg1, UArg arg2){
             /* Take a sample */
             res = ADCBuf_convert(adcBuf, joystickConv, 2);                                                  // Trigger joystick conversion
             if (res == ADCBuf_STATUS_SUCCESS) {
-                System_printf("Joystick X:%5d \t Y:%5d", joystickX[0], joystickY[0]);
+                //System_printf("Joystick X:%5d \t Y:%5d", joystickX[0], joystickY[0]);
 
                 /* Result normalization */
                 joystick.x = map(joystickX[0], (Range *) &rangeX, (Range *) &joystickNormalized);           // Transform X results into comprehensible range
                 joystick.y = map(joystickY[0], (Range *) &rangeY, (Range *) &joystickNormalized);           // Transform Y results into comprehensible range
                 discretizePoint(&joystick, (Range *) &idleZone, (Range *) &idleZone, (Point *) &idlePoint); // Make a wide zone in the center of the joystick that will be considered as idelPoint
 
-                System_printf("\t[%4d,%4d]", joystick.x, joystick.y);
+                //System_printf("\t[%4d,%4d]", joystick.x, joystick.y);
 
             } else {
                 System_printf("Joystick conversion failed\n");
+                System_flush();
             }
 
             ADCBuf_close(adcBuf);
-            System_printf("\n");
+            //System_printf("\n");
             System_flush();
 
 
