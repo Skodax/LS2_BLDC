@@ -49,6 +49,7 @@
 extern Task_Handle taskJoystickRead;
 extern Clock_Handle clockJoystickRead;
 extern Semaphore_Handle semJoystickRead;
+extern Mailbox_Handle mbxJoystick;
 
 /****************************************************************************************************************************************************
  *      JOYSTICK PARAMETERS
@@ -58,20 +59,10 @@ typedef struct{
     uint16_t max;
 } Range_unsigned;
 
-typedef struct{
-    int16_t min;
-    int16_t max;
-} Range;
-
-typedef struct{
-    int16_t x;
-    int16_t y;
-} Point;
-
 const Range_unsigned rangeX = {114, 16172};                 // Experimental edges of the X axis
 const Range_unsigned rangeY = {0, 16380};                   // Experimental edges of the Y axis
 
-const Range joystickNormalized = {100, -100};               // Joystick axis range normalized. The range is inverted to correct the MKII inversion
+//const Range joystickNormalized = {100, -100};               // Joystick axis range normalized. The range is inverted to correct the MKII inversion
 const Range idleZone = {-10, 10};                           // Joystick zone that is considered idle (no user action)
 const Point idlePoint = {0, 0};                             // Joystick point considered idle (each point in the idle zone will be converted to idlePoint)
 
@@ -142,16 +133,22 @@ void taskJoystickReadFx(UArg arg1, UArg arg2){
                 joystick.y = map(joystickY[0], (Range *) &rangeY, (Range *) &joystickNormalized);           // Transform Y results into comprehensible range
                 discretizePoint(&joystick, (Range *) &idleZone, (Range *) &idleZone, (Point *) &idlePoint); // Make a wide zone in the center of the joystick that will be considered as idelPoint
 
+                /* Close ADC */
+                ADCBuf_close(adcBuf);
+
+                /* Send data */
+                Mailbox_post(mbxJoystick, &joystick, BIOS_WAIT_FOREVER);
                 //System_printf("\t[%4d,%4d]", joystick.x, joystick.y);
+
 
             } else {
                 System_printf("Joystick conversion failed\n");
                 System_flush();
+                ADCBuf_close(adcBuf);
             }
 
-            ADCBuf_close(adcBuf);
             //System_printf("\n");
-            System_flush();
+            //System_flush();
 
 
         } else {

@@ -48,10 +48,15 @@
 /* Board header files */
 #include <ti/drivers/Board.h>
 
+/* User libraries */
+#include "../JOYSTICK/Joystick.h"
+
 
 /****************************************************************************************************************************************************
  *      MACROS
  ****************************************************************************************************************************************************/
+
+/* LCD parameters */
 #define CTX                                         g_sContext                  // Context
 #define CTXP                                        &CTX                        // Context pointer
 
@@ -69,11 +74,23 @@
 #define COLOR_TEXT                                  GRAPHICS_COLOR_WHITE        // Color used for the main text
 #define COLOR_TEXT_MUTED                            0x00CCCCCC                  // Color used for secondary text
 
+/* Data Cards parameters */
 #define DATA_CARD_LINE_YOFFSET                      15                          // Height between y origin coordinate and line
-#define DATA_CARD_UNITS_YOFFSET                     26                          // Height between y origin coordinate and units
-#define DATA_CARD_VALUE_YOFFSET                     25                          // Height between y origin coordinate and value
+#define DATA_CARD_VALUE_YOFFSET                     20                          // Height between y origin coordinate and value
+#define DATA_CARD_UNITS_YOFFSET                     21                          // Height between y origin coordinate and units
+#define DATA_CARD_VALUE_INLINE_YOFFSET              0                           // Height between y origin coordinate and value when is a inline card
+#define DATA_CARD_UNITS_INLINE_YOFFSET              1                           // Height between y origin coordinate and units when is a inline card
 
+/* Pages parameters */
+#define PAGE_MOTOR                                  0
+#define PAGE_JOYSTICK                               1
+#define PAGE_DEFAULT                                PAGE_JOYSTICK
+
+/* Speed parameters */
 #define SPEED_LEN                                   7                           // Speed string length
+
+/* Joystick parameters */
+#define JOYSTICK_LEN                                6
 
 /****************************************************************************************************************************************************
  *      DISPLAY HANDLERS
@@ -85,10 +102,17 @@ typedef struct {                                                            // H
     int32_t valueY;                                                         // Stores the Y coord. where the value will be drawn
 } DataCard_Handle;
 
+typedef enum {
+    DATA_CARD_TYPE_NORMAL,
+    DATA_CARD_TYPE_INLINE
+}DataCard_Type;
+
 /* Handlers */
 Graphics_Context CTX;
 Graphics_Rectangle header = {0,0, LCD_HORIZONTAL_MAX, 30};                  // Display header background
-DataCard_Handle theoricalSpeed;                                             // Theorical speed card
+DataCard_Handle theoricalSpeedHdl;                                          // Theorical speed card
+DataCard_Handle joystickXHdl;                                               // Joystick X value card
+DataCard_Handle joystickYHdl;                                               // Joystick Y value card
 
 
 /****************************************************************************************************************************************************
@@ -96,6 +120,7 @@ DataCard_Handle theoricalSpeed;                                             // T
  ****************************************************************************************************************************************************/
 extern Task_Handle taskLcd;
 extern Mailbox_Handle mbxTheoricalSpeed;
+extern Mailbox_Handle mbxJoystick;
 /****************************************************************************************************************************************************
  *      DIVER HANDLERS
  ****************************************************************************************************************************************************/
@@ -106,8 +131,10 @@ SPI_Handle spi;
  ****************************************************************************************************************************************************/
 void taskLcdFx(UArg arg0, UArg arg1);
 void drawHeader(int8_t *string);
-void drawDataCard(DataCard_Handle *handle, int8_t *label, int8_t *units, int32_t y);
+void drawDataCard(DataCard_Handle *handle, int8_t *label, int8_t *units, int32_t y, DataCard_Type type);
 void drawDataCardValue(DataCard_Handle *handle, int8_t *data);
+void pageMotorTemplate();
+void pageJoystickTemplate();
 
 /****************************************************************************************************************************************************
  *      TASK
@@ -117,30 +144,65 @@ void taskLcdFx(UArg arg0, UArg arg1){
     /* LCD initialize */
     Crystalfontz128x128_Init();
     Crystalfontz128x128_SetOrientation(LCD_ORIENTATION_DOWN);                                   // Turn LCD, user will see it from below
+    Graphics_initContext(CTXP, &g_sCrystalfontz128x128, &g_sCrystalfontz128x128_funcs);         // Initialize graphic context
 
-    /* Initializes graphics context */
-   Graphics_initContext(CTXP, &g_sCrystalfontz128x128, &g_sCrystalfontz128x128_funcs);
-   Graphics_setForegroundColor(CTXP, COLOR_TEXT);
-   Graphics_setBackgroundColor(CTXP, COLOR_BACKGROUND);
-   Graphics_clearDisplay(CTXP);
-
-   /* Draw screen template */
-   drawHeader((int8_t *)"BLDC Motor");                                                          // Header for the page
-   drawDataCard(                                                                                // Draw a boilerplate for theroical speed value
-                   &theoricalSpeed,                                                             // Card handle
-                   (int8_t *)"Theorical speed",                                                 // Card label
-                   (int8_t *)"RPM",                                                             // Card units
-                   40                                                                           // Card y coord.
-               );
+   /* Page */
+   uint8_t page = PAGE_DEFAULT;                                                                 // Start with the default page
 
    /* Theorical Speed */
    uint32_t theroricalSpeed = 0;                                                                // Speed calculated from the commands sent to the motor
    char theoricalSpeedStr[SPEED_LEN];                                                           // Speed as string
 
+   /* Joystick values */
+   Point joystick;
+   char joystickXStr[JOYSTICK_LEN];
+   char joystickYStr[JOYSTICK_LEN];
+
    while(1){
-       Mailbox_pend(mbxTheoricalSpeed, &theroricalSpeed, BIOS_WAIT_FOREVER);                    // Wait and get theorical speed
-       sprintf(theoricalSpeedStr, "%7d", theroricalSpeed);                                      // Convert to string (right align the number and fill str. with trailing spaces)
-       drawDataCardValue(&theoricalSpeed, (int8_t *) theoricalSpeedStr);                        // Refresh theorical speed value
+
+       /* Page reset */
+      Graphics_setForegroundColor(CTXP, COLOR_TEXT);
+      Graphics_setBackgroundColor(CTXP, COLOR_BACKGROUND);
+      Graphics_clearDisplay(CTXP);
+
+      /* Page initialization */
+      switch (page) {
+        case PAGE_MOTOR:
+            pageMotorTemplate();
+            break;
+
+        case PAGE_JOYSTICK:
+            pageJoystickTemplate();
+            break;
+        default:
+            break;
+      }
+
+      /* Page loop */
+      // Only refresh necessary data
+      while(1){
+          switch (page) {
+            case PAGE_MOTOR:
+
+               Mailbox_pend(mbxTheoricalSpeed, &theroricalSpeed, BIOS_WAIT_FOREVER);                    // Wait and get theorical speed
+               sprintf(theoricalSpeedStr, "%7d", theroricalSpeed);                                      // Convert to string (right align the number and fill str. with trailing spaces)
+               drawDataCardValue(&theoricalSpeedHdl, (int8_t *) theoricalSpeedStr);                     // Refresh theorical speed value
+               break;
+
+            case PAGE_JOYSTICK:
+
+                Mailbox_pend(mbxJoystick, &joystick, BIOS_WAIT_FOREVER);
+                sprintf(joystickXStr, "%4d", joystick.x);
+                sprintf(joystickYStr, "%4d", joystick.y);
+                drawDataCardValue(&joystickXHdl, (int8_t *) joystickXStr);
+                drawDataCardValue(&joystickYHdl, (int8_t *) joystickYStr);
+                break;
+
+            default:
+                break;
+        }
+      }
+
    }
 
 
@@ -170,7 +232,7 @@ void drawHeader(int8_t *string){
     Graphics_setForegroundColor(CTXP, COLOR_TEXT);
 }
 
-void drawDataCard(DataCard_Handle *handle, int8_t *label, int8_t *units, int32_t y){
+void drawDataCard(DataCard_Handle *handle, int8_t *label, int8_t *units, int32_t y, DataCard_Type type){
 
     /* DATA CARD
      *
@@ -185,14 +247,25 @@ void drawDataCard(DataCard_Handle *handle, int8_t *label, int8_t *units, int32_t
     Graphics_drawLineH(CTXP, DISPLAY_LEFT_EDGE, DISPLAY_RIGHT_EDGE, y + DATA_CARD_LINE_YOFFSET);                    // Draw a label underline
 
     /* Data units */
-    uint32_t unitsX = DISPLAY_RIGHT_EDGE;
+    int32_t unitsX = DISPLAY_RIGHT_EDGE;
+    int32_t unitsY = y;
+    if(type == DATA_CARD_TYPE_INLINE){
+        unitsY += DATA_CARD_UNITS_INLINE_YOFFSET;
+    } else {
+        unitsY += DATA_CARD_UNITS_YOFFSET;
+    }
+
     unitsX -= Graphics_getStringWidth(CTXP, units, AUTO_STRING_LENGTH);                                             // Right align text calculations
     Graphics_setForegroundColor(CTXP, COLOR_TEXT);                                                                  // Set font color
-    Graphics_drawString(CTXP, units, AUTO_STRING_LENGTH, unitsX, y + DATA_CARD_UNITS_YOFFSET, TRANSPARENT_TEXT);    // Draw value units
+    Graphics_drawString(CTXP, units, AUTO_STRING_LENGTH, unitsX, unitsY, TRANSPARENT_TEXT);                         // Draw value units
 
     /* Data magnitude (value) */
     handle->valueX = unitsX - DISPLAY_LEFT_EDGE;                                                                    // Fill handle structure
-    handle->valueY = y + DATA_CARD_VALUE_YOFFSET;
+    if(type == DATA_CARD_TYPE_INLINE){
+        handle->valueY = y + DATA_CARD_VALUE_INLINE_YOFFSET;                                                        // Fill handle structure when card is inline type
+    } else {
+        handle->valueY = y + DATA_CARD_VALUE_YOFFSET;                                                               // Fill handle structure
+    }
 }
 
 void drawDataCardValue(DataCard_Handle *handle, int8_t *data){
@@ -202,7 +275,45 @@ void drawDataCardValue(DataCard_Handle *handle, int8_t *data){
     Graphics_setForegroundColor(CTXP, COLOR_TEXT);                                                                  // Set font color
 
     int32_t dataX = handle->valueX;
-    dataX -= Graphics_getStringWidth(CTXP, data, AUTO_STRING_LENGTH);                                              // Right align text calculations
-    Graphics_drawString(CTXP, data, AUTO_STRING_LENGTH, dataX, handle->valueY, OPAQUE_TEXT);                      // Draw value
+    dataX -= Graphics_getStringWidth(CTXP, data, AUTO_STRING_LENGTH);                                               // Right align text calculations
+    Graphics_drawString(CTXP, data, AUTO_STRING_LENGTH, dataX, handle->valueY, OPAQUE_TEXT);                        // Draw value
+}
+
+/* PAGE TEMPLATES (initialization) */
+
+void pageMotorTemplate(){
+    /* Header */
+    drawHeader((int8_t *)"BLDC Motor");                                                          // Header for the page
+
+    /* Body */
+    drawDataCard(                                                                                // Draw a boilerplate for theroical speed value
+                    &theoricalSpeedHdl,                                                          // Card handle
+                    (int8_t *)"Theorical speed",                                                 // Card label
+                    (int8_t *)"RPM",                                                             // Card units
+                    40,                                                                          // Card y coord.
+                    DATA_CARD_TYPE_NORMAL                                                        // Data below the label
+                );
+}
+
+void pageJoystickTemplate(){
+    /* Header */
+    drawHeader((int8_t *)"Joystick");                                                           // Header for the page
+
+    /* Body */
+    drawDataCard(                                                                               // Draw a boilerplate for joystick X value
+                    &joystickXHdl,                                                              // Card handle
+                    (int8_t *)"X coordinate",                                                   // Card label
+                    (int8_t *)"",                                                               // Card units
+                    35,                                                                         // Card y coord.
+                    DATA_CARD_TYPE_INLINE                                                       // Data next to the label
+                );
+
+    drawDataCard(                                                                               // Draw a boilerplate for joystick X value
+                    &joystickYHdl,                                                              // Card handle
+                    (int8_t *)"Y coordinate",                                                   // Card label
+                    (int8_t *)"",                                                               // Card units
+                    55,                                                                         // Card y coord.
+                    DATA_CARD_TYPE_INLINE                                                       // Data next to the label
+                );
 }
 
