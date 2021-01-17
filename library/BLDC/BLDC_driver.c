@@ -239,7 +239,7 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
 
     /* Time buffer */
     uint8_t i = 0;
-    uint32_t timeBuffa[TIME_BUFF_LEN];
+    uint32_t timeBuff[TIME_BUFF_LEN];
     uint32_t time;
 
     /* Speed conversion */
@@ -264,17 +264,12 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
         } else if(events & EVENT_MBX_TIME){
 
             /* Get time buffer from taskPhaseChange */
-            Bool hasMsg = Mailbox_pend(mbxPhaseChangeTime, timeBuffa, BIOS_NO_WAIT);
-            if(!hasMsg){
-                System_printf("Mailbox buit. Program halt \n");
-                System_flush();
-                while(1);
-            }
+            Mailbox_pend(mbxPhaseChangeTime, timeBuff, BIOS_NO_WAIT);
 
             /* Average calculation */
             time = 0;                                                   // Reset accumulator
             for(i = 0; i < TIME_BUFF_LEN; i++){                         // Sum all times in the buffer
-                time += timeBuffa[i];
+                time += timeBuff[i];
             }
 
             time >>= TIME_AVG_SHIFT;                                    // Divide by the number of sumands

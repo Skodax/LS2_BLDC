@@ -67,17 +67,29 @@
 #define COLOR_BACKGROUND                            GRAPHICS_COLOR_BLACK        // Color used for LCD background
 #define COLOR_HEADER_BACKGROUND                     GRAPHICS_COLOR_RED          // Color used for Header background
 #define COLOR_TEXT                                  GRAPHICS_COLOR_WHITE        // Color used for the main text
-#define COLOR_TEXT_MUTED                            GRAPHICS_COLOR_WHITE_SMOKE  // Color used for secondary text
+#define COLOR_TEXT_MUTED                            0x00CCCCCC                  // Color used for secondary text
+
+#define DATA_CARD_LINE_YOFFSET                      15                          // Height between y origin coordinate and line
+#define DATA_CARD_UNITS_YOFFSET                     26                          // Height between y origin coordinate and units
+#define DATA_CARD_VALUE_YOFFSET                     25                          // Height between y origin coordinate and value
 
 #define SPEED_LEN                                   7                           // Speed string length
 
 /****************************************************************************************************************************************************
  *      DISPLAY HANDLERS
  ****************************************************************************************************************************************************/
+
+/* Definitions */
+typedef struct {                                                            // Handle for Data Cards
+    int32_t valueX;                                                         // Stores the X coord. where the value will be drawn
+    int32_t valueY;                                                         // Stores the Y coord. where the value will be drawn
+} DataCard_Handle;
+
+/* Handlers */
 Graphics_Context CTX;
 Graphics_Rectangle header = {0,0, LCD_HORIZONTAL_MAX, 30};                  // Display header background
-Graphics_Rectangle theoricalSpeedBg;                                        // Theorical speed magnitude background
-uint32_t theoricalSpeedRightEdge;
+DataCard_Handle theoricalSpeed;                                             // Theorical speed card
+
 
 /****************************************************************************************************************************************************
  *      RTOS HANDLERS
@@ -94,8 +106,8 @@ SPI_Handle spi;
  ****************************************************************************************************************************************************/
 void taskLcdFx(UArg arg0, UArg arg1);
 void drawHeader(int8_t *string);
-void drawTheoricalSpeedCard();
-void drawTheoricalSpeed();
+void drawDataCard(DataCard_Handle *handle, int8_t *label, int8_t *units, int32_t y);
+void drawDataCardValue(DataCard_Handle *handle, int8_t *data);
 
 /****************************************************************************************************************************************************
  *      TASK
@@ -113,17 +125,22 @@ void taskLcdFx(UArg arg0, UArg arg1){
    Graphics_clearDisplay(CTXP);
 
    /* Draw screen template */
-   drawHeader((int8_t *)"BLDC Motor");
-   drawTheoricalSpeedCard();
+   drawHeader((int8_t *)"BLDC Motor");                                                          // Header for the page
+   drawDataCard(                                                                                // Draw a boilerplate for theroical speed value
+                   &theoricalSpeed,                                                             // Card handle
+                   (int8_t *)"Theorical speed",                                                 // Card label
+                   (int8_t *)"RPM",                                                             // Card units
+                   40                                                                           // Card y coord.
+               );
 
-   /* Speed */
-   uint32_t speed = 0;
-   char speedStr[SPEED_LEN];
+   /* Theorical Speed */
+   uint32_t theroricalSpeed = 0;                                                                // Speed calculated from the commands sent to the motor
+   char theoricalSpeedStr[SPEED_LEN];                                                           // Speed as string
 
    while(1){
-       Mailbox_pend(mbxTheoricalSpeed, &speed, BIOS_WAIT_FOREVER);
-       sprintf(speedStr, "%7d", speed);
-       drawTheoricalSpeed(speedStr);
+       Mailbox_pend(mbxTheoricalSpeed, &theroricalSpeed, BIOS_WAIT_FOREVER);                    // Wait and get theorical speed
+       sprintf(theoricalSpeedStr, "%7d", theroricalSpeed);                                      // Convert to string (right align the number and fill str. with trailing spaces)
+       drawDataCardValue(&theoricalSpeed, (int8_t *) theoricalSpeedStr);                        // Refresh theorical speed value
    }
 
 
@@ -153,46 +170,39 @@ void drawHeader(int8_t *string){
     Graphics_setForegroundColor(CTXP, COLOR_TEXT);
 }
 
-void drawTheoricalSpeedCard(){
+void drawDataCard(DataCard_Handle *handle, int8_t *label, int8_t *units, int32_t y){
+
+    /* DATA CARD
+     *
+     * Draws a boiler plate for value representation, draws label and units.
+     * In the handle it stores the necessary data for later draw the data value.
+     * */
 
     /* Label and line */
     Graphics_setFont(CTXP, FONT_SMALL);
     Graphics_setForegroundColor(CTXP, COLOR_TEXT_MUTED);
-    Graphics_drawString(CTXP, (int8_t *)"Theorical speed", AUTO_STRING_LENGTH, 5, 40, TRANSPARENT_TEXT);
-    Graphics_drawLineH(CTXP, DISPLAY_LEFT_EDGE, DISPLAY_RIGHT_EDGE, 55);
+    Graphics_drawString(CTXP, label, AUTO_STRING_LENGTH, DISPLAY_LEFT_EDGE, y, TRANSPARENT_TEXT);                   // Draw card label
+    Graphics_drawLineH(CTXP, DISPLAY_LEFT_EDGE, DISPLAY_RIGHT_EDGE, y + DATA_CARD_LINE_YOFFSET);                    // Draw a label underline
 
-    /* Speed units */
+    /* Data units */
     uint32_t unitsX = DISPLAY_RIGHT_EDGE;
-    unitsX -= Graphics_getStringWidth(CTXP, (int8_t *)"RPM", AUTO_STRING_LENGTH);
-    Graphics_drawString(CTXP, (int8_t *)"RPM", AUTO_STRING_LENGTH, unitsX, 65, TRANSPARENT_TEXT);
+    unitsX -= Graphics_getStringWidth(CTXP, units, AUTO_STRING_LENGTH);                                             // Right align text calculations
+    Graphics_setForegroundColor(CTXP, COLOR_TEXT);                                                                  // Set font color
+    Graphics_drawString(CTXP, units, AUTO_STRING_LENGTH, unitsX, y + DATA_CARD_UNITS_YOFFSET, TRANSPARENT_TEXT);    // Draw value units
 
-    /* Speed magnitude */
-    Graphics_setFont(CTXP, FONT_NORMAL);
-    Graphics_setForegroundColor(CTXP, COLOR_TEXT);
-    theoricalSpeedRightEdge = unitsX - DISPLAY_LEFT_EDGE;
-    /*theoricalSpeedBg.xMax = theoricalSpeedRightEdge;
-    theoricalSpeedBg.xMin = theoricalSpeedRightEdge - 50;
-    theoricalSpeedBg.yMax = 70;
-    theoricalSpeedBg.yMin = 60;*/
-
-
-
-
-
-
+    /* Data magnitude (value) */
+    handle->valueX = unitsX - DISPLAY_LEFT_EDGE;                                                                    // Fill handle structure
+    handle->valueY = y + DATA_CARD_VALUE_YOFFSET;
 }
 
-void drawTheoricalSpeed(int8_t *speed){
+void drawDataCardValue(DataCard_Handle *handle, int8_t *data){
 
-    /*
-    Graphics_setForegroundColor(CTXP, COLOR_BACKGROUND);
-    Graphics_drawRectangle(CTXP, &theoricalSpeedBg);
-    Graphics_fillRectangle(CTXP, &theoricalSpeedBg);
+    /* Data magnitude (value) */
+    Graphics_setFont(CTXP, FONT_NORMAL);                                                                            // Set font
+    Graphics_setForegroundColor(CTXP, COLOR_TEXT);                                                                  // Set font color
 
-    Graphics_setFont(CTXP, FONT_NORMAL);
-    Graphics_setForegroundColor(CTXP, COLOR_TEXT);*/
-    int32_t speedX = theoricalSpeedRightEdge;
-    speedX -= Graphics_getStringWidth(CTXP, speed, AUTO_STRING_LENGTH);
-    Graphics_drawString(CTXP, speed, AUTO_STRING_LENGTH, speedX, 65, OPAQUE_TEXT);
+    int32_t dataX = handle->valueX;
+    dataX -= Graphics_getStringWidth(CTXP, data, AUTO_STRING_LENGTH);                                              // Right align text calculations
+    Graphics_drawString(CTXP, data, AUTO_STRING_LENGTH, dataX, handle->valueY, OPAQUE_TEXT);                      // Draw value
 }
 
