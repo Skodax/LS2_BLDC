@@ -32,7 +32,7 @@
 
 /* Drivers header files */
 #include "ti_drivers_config.h"
-#include <ti/drivers/ADC.h>
+#include <ti/drivers/ADCBuf.h>
 
 /* Board header files */
 #include <ti/drivers/Board.h>
@@ -41,6 +41,7 @@
 /****************************************************************************************************************************************************
  *      MACROS
  ****************************************************************************************************************************************************/
+#define SAMPLE_BUFF_SIZE                                    1   // Number of adc conversion per sample
 
 /****************************************************************************************************************************************************
  *      RTOS HANDLERS
@@ -73,14 +74,30 @@ void clockJoystickReadFx(UArg arg0){
 void taskJoystickReadFx(UArg arg1, UArg arg2){
 
     /* ADC initialization */
-    ADC_Handle adc;
-    ADC_Params params;
-    int_fast16_t res;
-    ADC_Params_init(&params);
+    ADCBuf_Handle adcBuf;
+    ADCBuf_Params params;
+    int_fast16_t res;                                                   // ADC response for conversion (succeded or failed)
+    ADCBuf_Params_init(&params);                                        // Default configuration: ONE_SHOT, MODE_BLOCKING ...
+
 
     /* Joystick data */
-    uint16_t joystickX;
-    uint16_t joystickY;
+    uint16_t joystickX[SAMPLE_BUFF_SIZE];
+    uint16_t joystickY[SAMPLE_BUFF_SIZE];
+
+    /* Conversion configure */
+    ADCBuf_Conversion joystickConv[2];                                  // Convert the 2 channels of the joystick
+
+    joystickConv[0].arg = NULL;
+    joystickConv[0].adcChannel = JOYSTICK_ADC0_X;
+    joystickConv[0].sampleBuffer = joystickX;
+    joystickConv[0].sampleBufferTwo = NULL;
+    joystickConv[0].samplesRequestedCount = SAMPLE_BUFF_SIZE;
+
+    joystickConv[1].arg = NULL;
+    joystickConv[1].adcChannel = JOYSTICK_ADC0_Y;
+    joystickConv[1].sampleBuffer = joystickY;
+    joystickConv[1].sampleBufferTwo = NULL;
+    joystickConv[1].samplesRequestedCount = SAMPLE_BUFF_SIZE;
 
     /* Main loop */
     while(1){
@@ -88,44 +105,23 @@ void taskJoystickReadFx(UArg arg1, UArg arg2){
         /* Wait for semaphore */
         Semaphore_pend(semJoystickRead, BIOS_WAIT_FOREVER);
 
-        /* X axis */
-        adc = ADC_open(JOYSTICK_ADC_X, &params);
-        if (adc == NULL) {
-            System_printf("Error initializing ADC0 for Joystick X axis\n");
+        /* Convert */
+        adcBuf = ADCBuf_open(JOYSTICK_ADC0, &params);
+        if (!adcBuf) {
+            System_printf("Error initializing ADC0 for Joystick\n");
             System_flush();
             while (1);
         }
-        res = ADC_convert(adc, &joystickX);
 
-        if (res == ADC_STATUS_SUCCESS) {
-            System_printf("Joystick X: %7d", joystickX);
+        res = ADCBuf_convert(adcBuf, joystickConv, 2);
+        if (res == ADCBuf_STATUS_SUCCESS) {
+            System_printf("Joystick X:%5d \t Y:%5d\n", joystickX[0], joystickY[0]);
         } else {
-            System_printf("Joystick X: FAILED ");
+            System_printf("Joystick conversion failed\n");
         }
 
-        ADC_close(adc);
-
-        /* Y axis */
-        adc = ADC_open(JOYSTICK_ADC_Y, &params);
-        if (adc == NULL) {
-            System_printf("Error initializing ADC0 for Joystick Y axis\n");
-            System_flush();
-            while (1);
-        }
-        res = ADC_convert(adc, &joystickY);
-
-        if (res == ADC_STATUS_SUCCESS) {
-            System_printf(" Y: %7d", joystickY);
-        } else {
-            System_printf(" Y: FAILED ");
-        }
-
-        ADC_close(adc);
-
-        /* Send data */
-        System_printf("\n");
+        ADCBuf_close(adcBuf);
         System_flush();
-
     }
 
 }

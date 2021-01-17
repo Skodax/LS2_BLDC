@@ -8,9 +8,8 @@
 /**
  * Import the modules used in this configuration.
  */
-const ADC     = scripting.addModule("/ti/drivers/ADC", {}, false);
-const ADC1    = ADC.addInstance();
-const ADC2    = ADC.addInstance();
+const ADCBuf  = scripting.addModule("/ti/drivers/ADCBuf", {}, false);
+const ADCBuf1 = ADCBuf.addInstance();
 const GPIO    = scripting.addModule("/ti/drivers/GPIO", {}, false);
 const GPIO1   = GPIO.addInstance();
 const GPIO2   = GPIO.addInstance();
@@ -37,13 +36,18 @@ const LED1    = LED.addInstance();
 /**
  * Write custom configuration values to the imported modules.
  */
-ADC1.$name              = "JOYSTICK_ADC_X";
-ADC1.adc.$assign        = "ADC14";
-ADC1.adc.adcPin.$assign = "boosterpack.2";
-
-ADC2.$name              = "JOYSTICK_ADC_Y";
-ADC2.adc.$assign        = "ADC14";
-ADC2.adc.adcPin.$assign = "boosterpack.26";
+ADCBuf1.$name                             = "JOYSTICK_ADC0";
+ADCBuf1.channels                          = 2;
+ADCBuf1.clockSource                       = "SMCLK";
+ADCBuf1.triggerSource                     = "Auto";
+ADCBuf1.enableDMA                         = false;
+ADCBuf1.adcBufChannel0.$name              = "_X";
+ADCBuf1.adcBufChannel0.adc.$assign        = "ADC14";
+ADCBuf1.adcBufChannel0.adc.adcPin.$assign = "boosterpack.2";
+ADCBuf1.adcBufChannel1.$name              = "_Y";
+ADCBuf1.adcBufChannel1.adc.$assign        = "ADC14";
+ADCBuf1.adcBufChannel1.adc.adcPin.$assign = "boosterpack.26";
+ADCBuf1.adc.$assign                       = "ADC14";
 
 GPIO1.$name              = "PHASE_A_LIN";
 GPIO1.mode               = "Output";
