@@ -51,15 +51,37 @@ extern Clock_Handle clockJoystickRead;
 extern Semaphore_Handle semJoystickRead;
 
 /****************************************************************************************************************************************************
- *      DIVER HANDLERS
+ *      JOYSTICK PARAMETERS
  ****************************************************************************************************************************************************/
+typedef struct{
+    uint16_t min;
+    uint16_t max;
+} Range_unsigned;
 
+typedef struct{
+    int16_t min;
+    int16_t max;
+} Range;
+
+typedef struct{
+    int16_t x;
+    int16_t y;
+} Point;
+
+const Range_unsigned rangeX = {114, 16172};                 // Experimental edges of the X axis
+const Range_unsigned rangeY = {0, 16380};                   // Experimental edges of the Y axis
+
+const Range joystickNormalized = {100, -100};               // Joystick axis range normalized. The range is inverted to correct the MKII inversion
+const Range idleZone = {-10, 10};                           // Joystick zone that is considered idle (no user action)
+const Point idlePoint = {0, 0};                             // Joystick point considered idle (each point in the idle zone will be converted to idlePoint)
 
 /****************************************************************************************************************************************************
  *      FUNCTION DECLARATION
  ****************************************************************************************************************************************************/
 void taskJoystickReadFx(UArg arg1, UArg arg2);
 void clockJoystickReadFx(UArg arg0);
+int16_t map(int16_t x, Range *in, Range *out);
+void discretizePoint(Point *point, Range *rangeX, Range *rangeY, Point *refPoint);
 
 /****************************************************************************************************************************************************
  *      SWI
@@ -81,8 +103,9 @@ void taskJoystickReadFx(UArg arg1, UArg arg2){
 
 
     /* Joystick data */
-    uint16_t joystickX[SAMPLE_BUFF_SIZE];
-    uint16_t joystickY[SAMPLE_BUFF_SIZE];
+    uint16_t joystickX[SAMPLE_BUFF_SIZE];                               // Samples buffer for X axis
+    uint16_t joystickY[SAMPLE_BUFF_SIZE];                               // Samples buffer for Y axis
+    Point joystick;
 
     /* Conversion configure */
     ADCBuf_Conversion joystickConv[2];                                  // Convert the 2 channels of the joystick
@@ -105,23 +128,84 @@ void taskJoystickReadFx(UArg arg1, UArg arg2){
         /* Wait for semaphore */
         Semaphore_pend(semJoystickRead, BIOS_WAIT_FOREVER);
 
-        /* Convert */
-        adcBuf = ADCBuf_open(JOYSTICK_ADC0, &params);
-        if (!adcBuf) {
+        /* Access ADC */
+        adcBuf = ADCBuf_open(JOYSTICK_ADC0, &params);                                                       // Access to the ADC pheripheric
+        if (adcBuf) {
+
+            /* Take a sample */
+            res = ADCBuf_convert(adcBuf, joystickConv, 2);                                                  // Trigger joystick conversion
+            if (res == ADCBuf_STATUS_SUCCESS) {
+                System_printf("Joystick X:%5d \t Y:%5d", joystickX[0], joystickY[0]);
+
+                /* Result normalization */
+                joystick.x = map(joystickX[0], (Range *) &rangeX, (Range *) &joystickNormalized);           // Transform X results into comprehensible range
+                joystick.y = map(joystickY[0], (Range *) &rangeY, (Range *) &joystickNormalized);           // Transform Y results into comprehensible range
+                discretizePoint(&joystick, (Range *) &idleZone, (Range *) &idleZone, (Point *) &idlePoint); // Make a wide zone in the center of the joystick that will be considered as idelPoint
+
+                System_printf("\t[%4d,%4d]", joystick.x, joystick.y);
+
+            } else {
+                System_printf("Joystick conversion failed\n");
+            }
+
+            ADCBuf_close(adcBuf);
+            System_printf("\n");
+            System_flush();
+
+
+        } else {
             System_printf("Error initializing ADC0 for Joystick\n");
             System_flush();
             while (1);
         }
 
-        res = ADCBuf_convert(adcBuf, joystickConv, 2);
-        if (res == ADCBuf_STATUS_SUCCESS) {
-            System_printf("Joystick X:%5d \t Y:%5d\n", joystickX[0], joystickY[0]);
-        } else {
-            System_printf("Joystick conversion failed\n");
-        }
-
-        ADCBuf_close(adcBuf);
-        System_flush();
     }
-
 }
+
+/****************************************************************************************************************************************************
+ *      FUNCTIONS
+ ****************************************************************************************************************************************************/
+
+/* MAP
+ * Change the value acording to the input and output range.
+ * Adapted from arduino's native map()
+ */
+int16_t map(int16_t x, Range *in, Range *out){
+    return (x - in->min) * (out->max - out->min) / (in->max - in->min) + out->min;
+}
+
+/* INACTIVE ZONE
+ * If the input point is inside the zone detemined by rangeX and rangeY it will be
+ * considered the refPoint. This function is useful for setting the joystick center
+ * as a stable point.
+ *
+ * Range limits are not considered inside the discretization zone.
+ */
+void discretizePoint(Point *point, Range *rangeX, Range *rangeY, Point *refPoint){
+
+    /* Evaluate if the point is inside the X and Y range */
+    if((point->x < rangeX->max) && (point->x > rangeX->min) && (point->y < rangeY->max) && (point->y >rangeY->min)){
+
+        /* Discretize point to refPoint */
+        point->x = refPoint->x;
+        point->y = refPoint->y;
+    }
+}
+
+/*
+ * DEPRECATED CODE
+ * Used for axis edges' determination
+ *
+ * @ Task initilization
+    Range RangeX = {0, 16383};
+    Range RangeY = {0, 16383};
+
+   @ Task loop
+    if(joystickX[0] > RangeX.max){RangeX.max = joystickX[0];}
+    if(joystickX[0] < RangeX.min){RangeX.min = joystickX[0];}
+    if(joystickY[0] > RangeY.max){RangeY.max = joystickY[0];}
+    if(joystickY[0] < RangeY.min){RangeY.min = joystickY[0];}
+
+    System_printf("\t X range [%5d,%5d]\t Y range [%5d,%5d]", RangeX.min, RangeX.max, RangeY.min, RangeY.max);
+ *
+ */
