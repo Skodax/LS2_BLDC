@@ -60,6 +60,7 @@
 #include "ti_drivers_config.h"
 #include <ti/drivers/GPIO.h>
 #include <ti/drivers/PWM.h>
+#include <ti/drivers/ADC.h>
 
 /* Board header files */
 #include <ti/drivers/Board.h>
@@ -86,6 +87,7 @@ int main()
     Board_init();
     GPIO_init();
     PWM_init();
+    ADC_init();
 
     /* Enable interrupts */
     GPIO_enableInt(Board_BUTTON_S1_GPIO);
