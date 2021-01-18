@@ -307,9 +307,9 @@ void BLDC_stop(void){
     Timer_stop(timerAccelerator);
     Event_post(eventPhaseChange, EVENT_MOTOR_STOP);
 
-    UInt32 timerPeriod;
-    timerPeriod = Timer_getPeriod(timerInitialAcceleration);
-    System_printf("Timer Period: %d \n", timerPeriod);
+    //UInt32 timerPeriod;
+    //timerPeriod = Timer_getPeriod(timerInitialAcceleration);
+    //System_printf("Timer Period: %d \n", timerPeriod);
 }
 
 /* Private */
@@ -391,8 +391,8 @@ void setPhase(uint8_t phase){
             Event_post(eventSpeed, EVENT_SPEED_0);
 
             //Todo: Remove when release
-            System_printf("Phase: CUT CURRENT \n");
-            System_flush();
+            //System_printf("Phase: CUT CURRENT \n");
+            //System_flush();
 
             break;
     }

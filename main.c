@@ -150,16 +150,16 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
 
             case Event_Id_01:
                 BLDC_start();
-                System_printf("Motor acceleration has started! \n");
-                System_flush();
+                //System_printf("Motor acceleration has started! \n");
+                //System_flush();
                 break;
 
             case (Event_Id_01 | Event_Id_02):                                   // Start motor and Stop motor (simulatneously) -> stop motor
-                System_printf("Motor Start & Stop simultaneous trigger \n");     // Todo: Remove when realease
+                //System_printf("Motor Start & Stop simultaneous trigger \n");     // Todo: Remove when realease
             case Event_Id_02:
                 BLDC_stop();
-                System_printf("Motor acceleration has stoped! \n");
-                System_flush();
+                //System_printf("Motor acceleration has stoped! \n");
+                //System_flush();
                 break;
 
             default:

@@ -49,6 +49,7 @@
 #include <ti/drivers/Board.h>
 
 /* User libraries */
+#include "../utilities/utilities.h"
 #include "../JOYSTICK/Joystick.h"
 
 
@@ -104,11 +105,21 @@ typedef struct {                                                            // H
 typedef enum {                                                              // Data Cards types
     DATA_CARD_TYPE_NORMAL,                                                  // Card value displayed under the label
     DATA_CARD_TYPE_INLINE                                                   // Card value displayed next to the label
-}DataCard_Type;
+} DataCard_Type;
+
+typedef struct {                                                            // Grlib doesn't have a circle shape defined
+    int32_t x;                                                              // Here's a handler for a circle
+    int32_t y;
+    int32_t radius;
+} Graphics_Circle;
 
 /* Handlers */
 Graphics_Context CTX;
 Graphics_Rectangle header = {0,0, LCD_HORIZONTAL_MAX, 30};                  // Display header background
+Graphics_Circle joystickGrPt;                                               // Circle for joystick's graphical representation
+Graphics_Circle joystickGrBd;                                               // Border circle for joystick's graphical representation
+Range joystickGrRangeX;                                                     // Range of movement in the x axis
+Range joystickGrRangeY;                                                     // Range of movement in the y axis
 DataCard_Handle theoricalSpeedHdl;                                          // Theorical speed card
 DataCard_Handle joystickXHdl;                                               // Joystick X value card
 DataCard_Handle joystickYHdl;                                               // Joystick Y value card
@@ -134,8 +145,9 @@ void taskLcdFx(UArg arg0, UArg arg1);
 void drawHeader(int8_t *string);
 void drawDataCard(DataCard_Handle *handle, int8_t *label, int8_t *units, int32_t y, DataCard_Type type);
 void drawDataCardValue(DataCard_Handle *handle, int8_t *data);
-void pageMotorTemplate();
-void pageJoystickTemplate();
+void pageMotorTemplate(void);
+void pageJoystickTemplate(void);
+void joystickGraphRefresh(Point *joystick);
 
 /****************************************************************************************************************************************************
  *      TASK
@@ -153,6 +165,7 @@ void taskLcdFx(UArg arg0, UArg arg1){
    uint32_t eventOrMask;                                                                        // Each page depends on different events this mask will listen only to the current page
 
    /* Data values */
+   //Bool hasMsg;                                                                                 // Check if the mailbox has message
    uint32_t theroricalSpeed = 0;                                                                // Speed calculated from the commands sent to the motor
    char theoricalSpeedStr[SPEED_LEN];                                                           // Speed as string
 
@@ -189,12 +202,12 @@ void taskLcdFx(UArg arg0, UArg arg1){
       /* General events */
       eventOrMask |= EVENT_NEXT_PAGE | EVENT_PREVIOUS_PAGE;                                             // Page change event subscription
 
-      /* Page refresh */
+      /* Current page refresh */
       // Only refresh necessary data
       while(1){
 
           /* Wait only for events needed by the current page */
-          events = Event_pend(eventLCD, Event_Id_NONE, eventOrMask, BIOS_WAIT_FOREVER);
+          events = Event_pend(eventLCD, Event_Id_NONE, eventOrMask, 100000);
 
           /* Page flow control */
           if(events & EVENT_NEXT_PAGE){
@@ -208,12 +221,14 @@ void taskLcdFx(UArg arg0, UArg arg1){
               break;                                                                                            // Break while loop (redraw entire page)
           }
 
+          Mailbox_pend(mbxTheoricalSpeed, &theroricalSpeed, BIOS_NO_WAIT);                         // Get theorical speed
+          Mailbox_pend(mbxJoystick, &joystick, BIOS_NO_WAIT);                                     // Get joystick values
+
           /* Page refresh */
           switch (page) {
             case PAGE_MOTOR:
 
                if(events & EVENT_THEORICAL_SPEED){
-                   Mailbox_pend(mbxTheoricalSpeed, &theroricalSpeed, BIOS_NO_WAIT);                         // Get theorical speed
                    sprintf(theoricalSpeedStr, "%7d", theroricalSpeed);                                      // Convert to string (right align the number and fill str. with trailing spaces)
                    drawDataCardValue(&theoricalSpeedHdl, (int8_t *) theoricalSpeedStr);                     // Refresh theorical speed value
                }
@@ -222,11 +237,11 @@ void taskLcdFx(UArg arg0, UArg arg1){
             case PAGE_JOYSTICK:
 
                 if(events & EVENT_JOYSTICK_DATA){
-                    Mailbox_pend(mbxJoystick, &joystick, BIOS_NO_WAIT);                                     // Get joystick values
                     sprintf(joystickXStr, "%4d", joystick.x);                                               // Convert to string (right align and fill with spaces)
                     sprintf(joystickYStr, "%4d", joystick.y);                                               // Convert to string (right align and fill with spaces)
                     drawDataCardValue(&joystickXHdl, (int8_t *) joystickXStr);                              // Refresh X axis value
                     drawDataCardValue(&joystickYHdl, (int8_t *) joystickYStr);                              // Refresh Y axis value
+                    joystickGraphRefresh(&joystick);                                                        // Move joystick's graph inner circle
                 }
                 break;
 
@@ -328,10 +343,12 @@ void pageMotorTemplate(){
 }
 
 void pageJoystickTemplate(){
+
     /* Header */
     drawHeader((int8_t *)"Joystick");                                                           // Header for the page
 
     /* Body */
+    // X axis
     drawDataCard(                                                                               // Draw a boilerplate for joystick X value
                     &joystickXHdl,                                                              // Card handle
                     (int8_t *)"X coordinate",                                                   // Card label
@@ -340,6 +357,7 @@ void pageJoystickTemplate(){
                     DATA_CARD_TYPE_INLINE                                                       // Data next to the label
                 );
 
+    // Y axis
     drawDataCard(                                                                               // Draw a boilerplate for joystick X value
                     &joystickYHdl,                                                              // Card handle
                     (int8_t *)"Y coordinate",                                                   // Card label
@@ -347,5 +365,45 @@ void pageJoystickTemplate(){
                     55,                                                                         // Card y coord.
                     DATA_CARD_TYPE_INLINE                                                       // Data next to the label
                 );
+
+    // Graphical joystick's representation
+    joystickGrBd.x = LCD_HORIZONTAL_MAX >> 1;                                                   // Border circle center of the x axis
+    joystickGrBd.y = 97;                                                                        // Border circle center y point
+    joystickGrBd.radius = 20;                                                                   // Border circle radius
+
+    joystickGrRangeX.max = joystickGrBd.x + joystickGrBd.radius;
+    joystickGrRangeX.min = joystickGrBd.x - joystickGrBd.radius;
+    joystickGrRangeY.max = joystickGrBd.y + joystickGrBd.radius;
+    joystickGrRangeY.min = joystickGrBd.y - joystickGrBd.radius;
+
+    Graphics_setForegroundColor(CTXP, GRAPHICS_COLOR_CADET_BLUE);
+    Graphics_drawCircle(CTXP, joystickGrBd.x, joystickGrBd.y, joystickGrBd.radius);             // Draw border cirlce
+
+    joystickGrPt.x = joystickGrBd.x;                                                            // Pointer circle (joystick's position)
+    joystickGrPt.y = joystickGrBd.y;                                                            // Initial display at the center of the border circle
+    joystickGrPt.radius = 5;
+    Graphics_setForegroundColor(CTXP, GRAPHICS_COLOR_BLUE_VIOLET);
+    Graphics_fillCircle(CTXP, joystickGrPt.x, joystickGrPt.y, joystickGrPt.radius);             // Draw inner circle
 }
 
+void joystickGraphRefresh(Point *joystick){
+
+    //Graphics_Circle prevCircle = {joystickGrPt.x, joystickGrPt.y, joystickGrPt.radius};
+
+    /* Delete previous frame circle */
+    Graphics_setForegroundColor(CTXP, COLOR_BACKGROUND);
+    Graphics_fillCircle(CTXP, joystickGrPt.x, joystickGrPt.y, joystickGrPt.radius);             // Erase previous circle
+
+    /* Position calculation */
+    joystickGrPt.x = map(joystick->x, (Range *) &joystickNormalizedNI, &joystickGrRangeX);      // Calculate X point
+    joystickGrPt.y = map(joystick->y, (Range *) &joystickNormalized, &joystickGrRangeY);        // Calculate Y point
+
+    /* Redraw border circle */
+    Graphics_setForegroundColor(CTXP, GRAPHICS_COLOR_CADET_BLUE);
+    Graphics_drawCircle(CTXP, joystickGrBd.x, joystickGrBd.y, joystickGrBd.radius);             // With the erasing some pixel may been damaged
+
+    /* Draw new circle */
+    Graphics_setForegroundColor(CTXP, GRAPHICS_COLOR_BLUE_VIOLET);
+    Graphics_fillCircle(CTXP, joystickGrPt.x, joystickGrPt.y, joystickGrPt.radius);             // Draw new circle
+
+}

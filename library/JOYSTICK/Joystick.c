@@ -38,6 +38,7 @@
 #include <ti/drivers/Board.h>
 
 /* User libraries */
+#include "../utilities/utilities.h"
 #include "../LCD/LCD.h"
 
 
@@ -63,10 +64,7 @@ extern Event_Handle eventLCD;
 /****************************************************************************************************************************************************
  *      JOYSTICK PARAMETERS
  ****************************************************************************************************************************************************/
-typedef struct{
-    uint16_t min;
-    uint16_t max;
-} Range_unsigned;
+
 
 const Range_unsigned rangeX = {114, 16172};                 // Experimental edges of the X axis
 const Range_unsigned rangeY = {0, 16380};                   // Experimental edges of the Y axis
@@ -80,8 +78,6 @@ const Point idlePoint = {0, 0};                             // Joystick point co
  ****************************************************************************************************************************************************/
 void taskJoystickReadFx(UArg arg1, UArg arg2);
 void clockJoystickReadFx(UArg arg0);
-int16_t map(int16_t x, Range *in, Range *out);
-void discretizePoint(Point *point, Range *rangeX, Range *rangeY, Point *refPoint);
 void joystickEventsChangePage(Point *joystick, uint8_t *eventPageBlocked);
 
 /****************************************************************************************************************************************************
@@ -106,7 +102,8 @@ void taskJoystickReadFx(UArg arg1, UArg arg2){
     /* Joystick data */
     uint16_t joystickX[SAMPLE_BUFF_SIZE];                               // Samples buffer for X axis
     uint16_t joystickY[SAMPLE_BUFF_SIZE];                               // Samples buffer for Y axis
-    Point joystick;
+    Point joystick = {0, 0};
+    Point prevJoytick = {0, 0};
 
     /* Conversion configure */
     ADCBuf_Conversion joystickConv[2];                                  // Convert the 2 channels of the joystick
@@ -139,33 +136,30 @@ void taskJoystickReadFx(UArg arg1, UArg arg2){
             /* Take a sample */
             res = ADCBuf_convert(adcBuf, joystickConv, 2);                                                  // Trigger joystick conversion
             if (res == ADCBuf_STATUS_SUCCESS) {
-                //System_printf("Joystick X:%5d \t Y:%5d", joystickX[0], joystickY[0]);
+
+                /* Close ADC */
+                ADCBuf_close(adcBuf);
 
                 /* Result normalization */
                 joystick.x = map(joystickX[0], (Range *) &rangeX, (Range *) &joystickNormalized);           // Transform X results into comprehensible range
                 joystick.y = map(joystickY[0], (Range *) &rangeY, (Range *) &joystickNormalized);           // Transform Y results into comprehensible range
                 discretizePoint(&joystick, (Range *) &idleZone, (Range *) &idleZone, (Point *) &idlePoint); // Make a wide zone in the center of the joystick that will be considered as idelPoint
 
-                /* Close ADC */
-                ADCBuf_close(adcBuf);
-
                 /* Joystick events */
                 joystickEventsChangePage(&joystick, &eventPageChangeBlocked);                               // Event trigger for LCD page change
 
                 /* Send data */
-                Mailbox_post(mbxJoystick, &joystick, BIOS_NO_WAIT);
-                //System_printf("\t[%4d,%4d]", joystick.x, joystick.y);
-
+                if((prevJoytick.x != joystick.x) || (prevJoytick.y != joystick.y)){
+                    Mailbox_post(mbxJoystick, &joystick, BIOS_NO_WAIT);                                     // If there's new data then send it
+                    prevJoytick.x = joystick.x;
+                    prevJoytick.y = joystick.y;
+                }
 
             } else {
                 System_printf("Joystick conversion failed\n");
                 System_flush();
                 ADCBuf_close(adcBuf);
             }
-
-            //System_printf("\n");
-            //System_flush();
-
 
         } else {
             System_printf("Error initializing ADC0 for Joystick\n");
@@ -179,32 +173,6 @@ void taskJoystickReadFx(UArg arg1, UArg arg2){
 /****************************************************************************************************************************************************
  *      FUNCTIONS
  ****************************************************************************************************************************************************/
-
-/* MAP
- * Change the value acording to the input and output range.
- * Adapted from arduino's native map()
- */
-int16_t map(int16_t x, Range *in, Range *out){
-    return (x - in->min) * (out->max - out->min) / (in->max - in->min) + out->min;
-}
-
-/* INACTIVE ZONE
- * If the input point is inside the zone detemined by rangeX and rangeY it will be
- * considered the refPoint. This function is useful for setting the joystick center
- * as a stable point.
- *
- * Range limits are not considered inside the discretization zone.
- */
-void discretizePoint(Point *point, Range *rangeX, Range *rangeY, Point *refPoint){
-
-    /* Evaluate if the point is inside the X and Y range */
-    if((point->x < rangeX->max) && (point->x > rangeX->min) && (point->y < rangeY->max) && (point->y >rangeY->min)){
-
-        /* Discretize point to refPoint */
-        point->x = refPoint->x;
-        point->y = refPoint->y;
-    }
-}
 
 void joystickEventsChangePage(Point *joystick, uint8_t *eventPageBlocked){
 
