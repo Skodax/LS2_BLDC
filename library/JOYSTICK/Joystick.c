@@ -37,11 +37,19 @@
 /* Board header files */
 #include <ti/drivers/Board.h>
 
+/* User libraries */
+#include "../LCD/LCD.h"
+
 
 /****************************************************************************************************************************************************
  *      MACROS
  ****************************************************************************************************************************************************/
+/* ADC parameters */
 #define SAMPLE_BUFF_SIZE                                    1   // Number of adc conversion per sample
+
+/* Joystick Events */
+#define JOYSTICK_EVENT_BLOCKED                              1   // Don't trigger joytick event
+#define JOYSTICK_EVENT_UNBLOCKED                            0   // Trigger joystick event
 
 /****************************************************************************************************************************************************
  *      RTOS HANDLERS
@@ -50,6 +58,7 @@ extern Task_Handle taskJoystickRead;
 extern Clock_Handle clockJoystickRead;
 extern Semaphore_Handle semJoystickRead;
 extern Mailbox_Handle mbxJoystick;
+extern Event_Handle eventLCD;
 
 /****************************************************************************************************************************************************
  *      JOYSTICK PARAMETERS
@@ -73,6 +82,7 @@ void taskJoystickReadFx(UArg arg1, UArg arg2);
 void clockJoystickReadFx(UArg arg0);
 int16_t map(int16_t x, Range *in, Range *out);
 void discretizePoint(Point *point, Range *rangeX, Range *rangeY, Point *refPoint);
+void joystickEventsChangePage(Point *joystick, uint8_t *eventPageBlocked);
 
 /****************************************************************************************************************************************************
  *      SWI
@@ -113,6 +123,9 @@ void taskJoystickReadFx(UArg arg1, UArg arg2){
     joystickConv[1].sampleBufferTwo = NULL;
     joystickConv[1].samplesRequestedCount = SAMPLE_BUFF_SIZE;
 
+    /* Joystick events parameters */
+    uint8_t eventPageChangeBlocked = JOYSTICK_EVENT_BLOCKED;                                                // By default block page change event
+
     /* Main loop */
     while(1){
 
@@ -136,8 +149,11 @@ void taskJoystickReadFx(UArg arg1, UArg arg2){
                 /* Close ADC */
                 ADCBuf_close(adcBuf);
 
+                /* Joystick events */
+                joystickEventsChangePage(&joystick, &eventPageChangeBlocked);                               // Event trigger for LCD page change
+
                 /* Send data */
-                Mailbox_post(mbxJoystick, &joystick, BIOS_WAIT_FOREVER);
+                Mailbox_post(mbxJoystick, &joystick, BIOS_NO_WAIT);
                 //System_printf("\t[%4d,%4d]", joystick.x, joystick.y);
 
 
@@ -187,6 +203,32 @@ void discretizePoint(Point *point, Range *rangeX, Range *rangeY, Point *refPoint
         /* Discretize point to refPoint */
         point->x = refPoint->x;
         point->y = refPoint->y;
+    }
+}
+
+void joystickEventsChangePage(Point *joystick, uint8_t *eventPageBlocked){
+
+    /* Trigger several events depending on the joystick's actions */
+
+    /* LCD Page change */
+    if(*eventPageBlocked){
+
+        if((joystick->x > -JOYSTICK_PAGE_EVENT_THRESHOLD) && (joystick->x < JOYSTICK_PAGE_EVENT_THRESHOLD)){
+            *eventPageBlocked = JOYSTICK_EVENT_UNBLOCKED;                       // Unblock event when the joystick's position out of the trigger zone
+        }
+
+    } else {
+
+        if(joystick->x > JOYSTICK_PAGE_EVENT_THRESHOLD){
+
+            Event_post(eventLCD, EVENT_NEXT_PAGE);                              // Trigger next page event
+            *eventPageBlocked = JOYSTICK_EVENT_BLOCKED;                         // Block event until joystick get out of the trigger zone
+
+        } else if(joystick->x < -JOYSTICK_PAGE_EVENT_THRESHOLD){
+
+            Event_post(eventLCD, EVENT_PREVIOUS_PAGE);                          // Trigger previous page event
+            *eventPageBlocked = JOYSTICK_EVENT_BLOCKED;                         // Block event until joystick get out of the trigger zone
+        }
     }
 }
 
