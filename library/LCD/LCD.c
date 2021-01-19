@@ -75,6 +75,11 @@
 #define COLOR_TEXT                                  GRAPHICS_COLOR_WHITE        // Color used for the main text
 #define COLOR_TEXT_MUTED                            0x00CCCCCC                  // Color used for secondary text
 
+/* Footer parameters */
+#define FOOTER_BULLET_Y                             123                         // Footer vertical position
+#define FOOTER_BULLET_SEPARATION                    10                          // Separation between bullets (pages indicator)
+#define FOOTER_BULLER_RADIUS                        2                           // Bullet radius
+
 /* Data Cards parameters */
 #define DATA_CARD_LINE_YOFFSET                      15                          // Height between y origin coordinate and line
 #define DATA_CARD_VALUE_YOFFSET                     20                          // Height between y origin coordinate and value
@@ -143,6 +148,7 @@ SPI_Handle spi;
  ****************************************************************************************************************************************************/
 void taskLcdFx(UArg arg0, UArg arg1);
 void drawHeader(int8_t *string);
+void drawFooter(uint8_t currentPage, uint8_t numberOfPages);
 void drawDataCard(DataCard_Handle *handle, int8_t *label, int8_t *units, int32_t y, DataCard_Type type);
 void drawDataCardValue(DataCard_Handle *handle, int8_t *data);
 void pageMotorTemplate(void);
@@ -198,6 +204,9 @@ void taskLcdFx(UArg arg0, UArg arg1){
             System_flush();
             break;
       }
+
+      /* Footer */
+      drawFooter(page, PAGE_COUNT);                                                                     // Draw footer for the current page
 
       /* General events */
       eventOrMask |= EVENT_NEXT_PAGE | EVENT_PREVIOUS_PAGE;                                             // Page change event subscription
@@ -276,6 +285,37 @@ void drawHeader(int8_t *string){
                                     15,
                                     TRANSPARENT_TEXT);
     Graphics_setForegroundColor(CTXP, COLOR_TEXT);
+}
+
+void drawFooter(uint8_t currentPage, uint8_t numberOfPages){
+
+    /* Page bullets */
+    // Draw a series of bullets that represents the different pages of the GUI
+    // The current page will be represented as a filled bullet
+
+    if(!numberOfPages){return;}                                                             // If the number of pages is 0 then don't draw footer
+    int32_t bulletX = LCD_HORIZONTAL_MAX >> 1;                                              // Center footer in the x axis
+    //float portion = (numberOfPages-1)/2.0;
+    bulletX -= (numberOfPages-1)/2.0 * FOOTER_BULLET_SEPARATION;                                          // First bullet position
+
+    Graphics_setForegroundColor(CTXP, COLOR_HEADER_BACKGROUND);                             // Bullet's color
+
+    uint8_t i;
+    for(i = 0; i < numberOfPages; i++){
+
+        /* Draw bullet */
+        if(i == currentPage){
+            Graphics_fillCircle(CTXP, bulletX, FOOTER_BULLET_Y, FOOTER_BULLER_RADIUS);
+        } else {
+            Graphics_drawCircle(CTXP, bulletX, FOOTER_BULLET_Y, FOOTER_BULLER_RADIUS);
+        }
+
+        /* Next bullet position */
+        bulletX += FOOTER_BULLET_SEPARATION;
+
+    }
+
+
 }
 
 void drawDataCard(DataCard_Handle *handle, int8_t *label, int8_t *units, int32_t y, DataCard_Type type){
