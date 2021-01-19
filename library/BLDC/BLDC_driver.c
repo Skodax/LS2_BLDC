@@ -46,8 +46,13 @@
 /****************************************************************************************************************************************************
  *      MACROS
  ****************************************************************************************************************************************************/
+/* Motor control Events */
+#define EVENT_MOTOR_MBX_SPEED       Event_Id_00
+#define EVENT_MOTOR_ACCELERATE      Event_Id_01
+#define EVENT_MOTOR_STOP            Event_Id_02
+
 /* Motor phase change Events */
-#define EVENT_MOTOR_STOP            Event_Id_00
+#define EVENT_PHASE_STOP            Event_Id_00
 #define EVENT_CHANGE_PHASE          Event_Id_01
 
 /* Speed calculation Events */
@@ -58,6 +63,10 @@
 #define STEPS_PER_LAP               43              // Motor steps per lap. Number of phase changes needed to complete a lap. Todo: Make sure 42 are the actual steps of the motor
 #define TIME_BUFF_LEN               32              // Time buffer lenght for speed calculation
 #define TIME_AVG_SHIFT              5               // Shift factor for average calculation
+
+/* Motor status */
+#define MOTOR_CTR_OL                1               // Motor control type -> Open loop
+#define MOTOR_CTR_CL                0               // Motor control type -> Closed loop
 
 /* Motor acceleration */
 #define MOTOR_INITIAL_PWM           10      //40
@@ -73,12 +82,16 @@
 extern Timer_Handle timerInitialAcceleration;
 extern Timer_Handle timerAccelerator;
 extern Swi_Handle swiAccelerateMotor;
+extern Task_Handle taskMotorControl;
 extern Task_Handle taskPhaseChange;
 extern Task_Handle taskSpeedCalculator;
+extern Event_Handle eventMotorControl;
 extern Event_Handle eventPhaseChange;
 extern Event_Handle eventSpeed;
 extern Mailbox_Handle mbxPhaseChangeTime;
 extern Mailbox_Handle mbxTheoricalSpeed;
+extern Mailbox_Handle mbxMotorSpeed;
+
 
 /****************************************************************************************************************************************************
  *      DIVER HANDLERS
@@ -92,6 +105,7 @@ PWM_Handle PWM_C;
  ****************************************************************************************************************************************************/
 void timerInitialAccelerationFx(UArg arg);
 void timerAcceleratorFx(UArg arg);
+void taskMotorControlFx(UArg arg1, UArg arg2);
 void taskPhaseChangeFx(UArg arg1, UArg arg2);
 void taskSpeedCalculatorFx(UArg arg1, UArg arg2);
 void setPhase(uint8_t phase);
@@ -135,6 +149,89 @@ void swiAccelerateMotorFx(UArg arg1, UArg arg2){
 /****************************************************************************************************************************************************
  *      TASK
  ****************************************************************************************************************************************************/
+void taskMotorControlFx(UArg arg1, UArg arg2){
+
+    /* Events */
+    uint32_t events;
+
+    /* Motor status */
+    int32_t speed = 0;                              // Motor stopped by default
+    uint8_t ctrlType = MOTOR_CTR_OL;                // Motor control Open Loop by default
+    uint32_t timerPeriod = 0;                       // Timer period for OL control
+    uint32_t dutyCycle = 0;                         // Duty cycle for CL control
+
+    /* External control */
+    int16_t joystick = 0;                           // No actions by default
+
+    /* Main task loop */
+    while(1){
+
+        /* Wait for events */
+        events = Event_pend(eventMotorControl, Event_Id_NONE, EVENT_MOTOR_MBX_SPEED | EVENT_MOTOR_ACCELERATE | EVENT_MOTOR_STOP, BIOS_WAIT_FOREVER);
+
+        /* Get data */
+        Mailbox_pend(mbxMotorSpeed, &joystick, BIOS_NO_WAIT);                       // Get joystick data
+
+        /* When MOTOR STOP event is trigger no other event is executed */
+        if((events & EVENT_MOTOR_STOP)){
+
+            /* Stop motor */
+            speed = dutyCycle = timerPeriod = joystick = 0;     // Reset control variables
+            ctrlType = MOTOR_CTR_OL;                            // Set motor control to OL
+            Timer_stop(timerInitialAcceleration);               // Stop OpenLoop control timer
+            Timer_stop(timerAccelerator);                       // Stop OpenLoop accelerator timer
+
+            /* Cut current */
+            Event_post(eventPhaseChange, EVENT_PHASE_STOP);     // Cut power to the motor
+
+        } else {
+
+            if(events & EVENT_MOTOR_MBX_SPEED){
+                if(ctrlType == MOTOR_CTR_OL){
+
+                    /* Open Loop control */
+                    speed += (int32_t) joystick;                // Accelerate depending on the joysticks position
+                    if(speed < 0){speed = 0;}                   // Minimum speed -> 0
+                    // Todo: maximum speed
+
+                    if(!speed){
+                        Event_post(eventMotorControl, EVENT_MOTOR_STOP);        // If speed is 0 then stop the motor
+                    } else {
+
+                        /* Convert to Timer period and Duty Cycle */
+                        timerPeriod = MOTOR_INITIAL_PERIOD - speed;
+                        Timer_setPeriod(timerInitialAcceleration, timerPeriod);
+                        Timer_start(timerInitialAcceleration);
+                    }
+
+
+
+                } else {
+
+                    /* Safe stop */
+                    Event_post(eventPhaseChange, EVENT_PHASE_STOP);     // Cut power to the motor
+
+                    /* Report error and halt */
+                    System_printf("Unknown ctrlType on taskMotorControl. Event: %d \n", ctrlType);
+                    System_flush();
+                    while(1);
+                }
+            }
+        }
+
+        /* Unexpected event detector */
+        if(events & ~(EVENT_MOTOR_MBX_SPEED | EVENT_MOTOR_ACCELERATE | EVENT_MOTOR_STOP)){
+
+            /* Safe stop */
+            Event_post(eventPhaseChange, EVENT_PHASE_STOP);     // Cut power to the motor
+
+            /* Report error and halt */
+            System_printf("Unknown event on taskMotorControl. Event: %d \n", events);
+            System_flush();
+            while(1);
+        }
+    }
+}
 
 void taskPhaseChangeFx(UArg arg1, UArg arg2){
 
@@ -185,10 +282,10 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
          *  - EVENT_MOTOR_STOP:     Stop the motor
          *  - EVENT_CHANGE_PHASE:   Switches to next phase of the motor
          */
-        events = Event_pend(eventPhaseChange, Event_Id_NONE, EVENT_MOTOR_STOP | EVENT_CHANGE_PHASE, BIOS_WAIT_FOREVER);
+        events = Event_pend(eventPhaseChange, Event_Id_NONE, EVENT_PHASE_STOP | EVENT_CHANGE_PHASE, BIOS_WAIT_FOREVER);
 
         /* EVENT ACTIONS */
-        if(events & EVENT_MOTOR_STOP){
+        if(events & EVENT_PHASE_STOP){
 
             /* Reset state */
             phase = tstart = tstop = i = 0;                                         // Reset phase and speed calculating parameters
@@ -291,25 +388,26 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
  *      FUNCTIONS
  ****************************************************************************************************************************************************/
 
-/* Public */
-void BLDC_start(void){
-
-    /* Start Initial acceleration timer */
-    Timer_setPeriod(timerInitialAcceleration, MOTOR_INITIAL_PERIOD);
-    Timer_start(timerInitialAcceleration);
-    Timer_start(timerAccelerator);
-}
+/* Public */ // Deprected
+//void BLDC_start(void){
+//
+//    /* Start Initial acceleration timer */
+//    Timer_setPeriod(timerInitialAcceleration, MOTOR_INITIAL_PERIOD);
+//    Timer_start(timerInitialAcceleration);
+//    Timer_start(timerAccelerator);
+//}
 
 void BLDC_stop(void){
 
     /* Stop Initial acceleration timer and motor */
-    Timer_stop(timerInitialAcceleration);
-    Timer_stop(timerAccelerator);
-    Event_post(eventPhaseChange, EVENT_MOTOR_STOP);
+//    Timer_stop(timerInitialAcceleration);
+//    Timer_stop(timerAccelerator);
+//    Event_post(eventPhaseChange, EVENT_PHASE_STOP);
 
     //UInt32 timerPeriod;
     //timerPeriod = Timer_getPeriod(timerInitialAcceleration);
     //System_printf("Timer Period: %d \n", timerPeriod);
+    Event_post(eventMotorControl, EVENT_MOTOR_STOP);
 }
 
 /* Private */
@@ -391,8 +489,8 @@ void setPhase(uint8_t phase){
             Event_post(eventSpeed, EVENT_SPEED_0);
 
             //Todo: Remove when release
-            //System_printf("Phase: CUT CURRENT \n");
-            //System_flush();
+            System_printf("Phase: CUT CURRENT \n");
+            System_flush();
 
             break;
     }

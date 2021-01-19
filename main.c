@@ -66,7 +66,6 @@
 #include <ti/drivers/Board.h>
 
 /* Handlers RTOS */
-extern Task_Handle taskMotorControl;
 extern Event_Handle eventMotorControl;
 
 /* User libraries */
@@ -76,7 +75,7 @@ extern Event_Handle eventMotorControl;
 
 
 /* Function declaration */
-void taskMotorControlFx(UArg arg1, UArg arg2);
+
 
 /*
  *  ======== main ========
@@ -108,68 +107,27 @@ int main()
 
 void hwiButtonS1Fx(void){
     GPIO_clearInt(Board_BUTTON_S1_GPIO);
-    Event_post(eventMotorControl, Event_Id_01);
+//    Event_post(eventMotorControl, Event_Id_01);
 }
 
 void hwiMkiiButton2Fx(void){
     GPIO_clearInt(MKII_BUTTON2_GPIO);
-    Event_post(eventMotorControl, Event_Id_01);
+//    Event_post(eventMotorControl, Event_Id_01);
 }
 
 void hwiButtonS2Fx(void){
     GPIO_clearInt(Board_BUTTON_S2_GPIO);
-    Event_post(eventMotorControl, Event_Id_02);
+//    Event_post(eventMotorControl, Event_Id_02);
+    BLDC_stop();
 }
 
 void hwiMkiiButton1Fx(void){
     GPIO_clearInt(MKII_BUTTON1_GPIO);
-    Event_post(eventMotorControl, Event_Id_02);
+//    Event_post(eventMotorControl, Event_Id_02);
+    BLDC_stop();
 }
 
-// TIMER
 
-
-// SWI
-
-
-// TASK
-void taskMotorControlFx(UArg arg1, UArg arg2){
-
-    UInt events = 0;
-
-    while(1){
-
-            events = Event_pend(eventMotorControl, Event_Id_NONE, Event_Id_00 | Event_Id_01 | Event_Id_02 , BIOS_WAIT_FOREVER);
-
-            switch(events){
-            case Event_Id_00:
-                // UNUSED
-//                System_printf("Timer Period: %d \n", timerPeriod);
-//                System_flush();
-                break;
-
-            case Event_Id_01:
-                BLDC_start();
-                //System_printf("Motor acceleration has started! \n");
-                //System_flush();
-                break;
-
-            case (Event_Id_01 | Event_Id_02):                                   // Start motor and Stop motor (simulatneously) -> stop motor
-                //System_printf("Motor Start & Stop simultaneous trigger \n");     // Todo: Remove when realease
-            case Event_Id_02:
-                BLDC_stop();
-                //System_printf("Motor acceleration has stoped! \n");
-                //System_flush();
-                break;
-
-            default:
-                System_printf("Unknown event on taskMotorControl. Event: %d \n", events);
-                System_flush();
-                while(1);
-
-            }
-        }
-}
 
 
 
