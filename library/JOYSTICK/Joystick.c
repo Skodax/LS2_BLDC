@@ -152,15 +152,12 @@ void taskJoystickReadFx(UArg arg1, UArg arg2){
                 /* Send data */
                 if((prevJoytick.x != joystick.x) || (prevJoytick.y != joystick.y)){
                     Mailbox_post(mbxJoystick, &joystick, BIOS_NO_WAIT);                                     // If there's new data then send it
+                    prevJoytick.x = joystick.x;
+                    prevJoytick.y = joystick.y;
                 }
 
-                if(prevJoytick.y != joystick.y){
-                    Mailbox_post(mbxMotorSpeed, &joystick.y, BIOS_NO_WAIT);                                 // Send the control speed to the motor
-                }
+                Mailbox_post(mbxMotorSpeed, &joystick.y, BIOS_NO_WAIT);                                 // Send the control speed to the motor
 
-                /* Save current values as previous ones */
-                prevJoytick.x = joystick.x;
-                prevJoytick.y = joystick.y;
 
             } else {
                 System_printf("Joystick conversion failed\n");

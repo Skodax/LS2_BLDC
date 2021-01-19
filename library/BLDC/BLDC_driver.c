@@ -79,9 +79,9 @@
  *      RTOS HANDLERS
  ****************************************************************************************************************************************************/
 
-extern Timer_Handle timerInitialAcceleration;
-extern Timer_Handle timerAccelerator;
-extern Swi_Handle swiAccelerateMotor;
+extern Timer_Handle timerMotorControlOL;
+//extern Timer_Handle timerAccelerator;
+//extern Swi_Handle swiAccelerateMotor;
 extern Task_Handle taskMotorControl;
 extern Task_Handle taskPhaseChange;
 extern Task_Handle taskSpeedCalculator;
@@ -91,7 +91,7 @@ extern Event_Handle eventSpeed;
 extern Mailbox_Handle mbxPhaseChangeTime;
 extern Mailbox_Handle mbxTheoricalSpeed;
 extern Mailbox_Handle mbxMotorSpeed;
-
+extern Mailbox_Handle mbxDutyCycle;
 
 /****************************************************************************************************************************************************
  *      DIVER HANDLERS
@@ -103,47 +103,56 @@ PWM_Handle PWM_C;
 /****************************************************************************************************************************************************
  *      FUNCTION DECLARATION
  ****************************************************************************************************************************************************/
-void timerInitialAccelerationFx(UArg arg);
-void timerAcceleratorFx(UArg arg);
+void timerMotorControlOLFx(UArg arg);
+//void timerAcceleratorFx(UArg arg);
 void taskMotorControlFx(UArg arg1, UArg arg2);
 void taskPhaseChangeFx(UArg arg1, UArg arg2);
 void taskSpeedCalculatorFx(UArg arg1, UArg arg2);
 void setPhase(uint8_t phase);
+uint32_t dutyCycle(uint8_t percentage);
+uint32_t dutyCycleForOLCtrl(uint32_t timerPeriod);
 
 /****************************************************************************************************************************************************
  *      HWI
  ****************************************************************************************************************************************************/
 
-void timerInitialAccelerationFx(UArg arg){
+void timerMotorControlOLFx(UArg arg){
     // CHANGE PHASE
     Event_post(eventPhaseChange, EVENT_CHANGE_PHASE);
 }
 
-void timerAcceleratorFx(UArg arg){
-    Swi_post(swiAccelerateMotor);
-}
+//void timerAcceleratorFx(UArg arg){
+//    Swi_post(swiAccelerateMotor);
+//}
 
+void hwiMkiiButton2Fx(void){
+    GPIO_clearInt(MKII_BUTTON2_GPIO);
+//    Event_post(eventMotorControl, Event_Id_01);
+    UInt32 timerPeriod;
+    timerPeriod = Timer_getPeriod(timerMotorControlOL);
+    System_printf("Timer period: %4d\n", timerPeriod);
+}
 
 /****************************************************************************************************************************************************
  *      SWI
  ****************************************************************************************************************************************************/
 
-void swiAccelerateMotorFx(UArg arg1, UArg arg2){
-
-    // ACCELERATE MOTOR
-    // Reduce timer period
-    UInt32 timerPeriod;
-    timerPeriod = Timer_getPeriod(timerInitialAcceleration);
-    timerPeriod -= MOTOR_INITIAL_ACC;       // 5
-
-    if(timerPeriod > MOTOR_MIN_PERIOD){   // 35
-        Timer_setPeriod(timerInitialAcceleration, timerPeriod);
-        Timer_start(timerInitialAcceleration);
-    } else {
-        Timer_stop(timerAccelerator);
-    }
-
-}
+//void swiAccelerateMotorFx(UArg arg1, UArg arg2){
+//
+//    // ACCELERATE MOTOR
+//    // Reduce timer period
+//    UInt32 timerPeriod;
+//    timerPeriod = Timer_getPeriod(timerMotorControlOL);
+//    timerPeriod -= MOTOR_INITIAL_ACC;       // 5
+//
+//    if(timerPeriod > MOTOR_MIN_PERIOD){   // 35
+//        Timer_setPeriod(timerMotorControlOL, timerPeriod);
+//        Timer_start(timerMotorControlOL);
+//    } else {
+//        Timer_stop(timerAccelerator);
+//    }
+//
+//}
 
 
 /****************************************************************************************************************************************************
@@ -158,7 +167,7 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
     int32_t speed = 0;                              // Motor stopped by default
     uint8_t ctrlType = MOTOR_CTR_OL;                // Motor control Open Loop by default
     uint32_t timerPeriod = 0;                       // Timer period for OL control
-    uint32_t dutyCycle = 0;                         // Duty cycle for CL control
+    uint32_t dutyCycleRaw = 0;                      // Duty cycle for CL control
 
     /* External control */
     int16_t joystick = 0;                           // No actions by default
@@ -176,13 +185,17 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
         if((events & EVENT_MOTOR_STOP)){
 
             /* Stop motor */
-            speed = dutyCycle = timerPeriod = joystick = 0;     // Reset control variables
-            ctrlType = MOTOR_CTR_OL;                            // Set motor control to OL
-            Timer_stop(timerInitialAcceleration);               // Stop OpenLoop control timer
-            Timer_stop(timerAccelerator);                       // Stop OpenLoop accelerator timer
+            speed = dutyCycleRaw = timerPeriod = joystick = 0;          // Reset control variables
+            ctrlType = MOTOR_CTR_OL;                                    // Set motor control to OL
+            Mailbox_post(mbxDutyCycle, &dutyCycleRaw, BIOS_NO_WAIT);    // Send duty cycle to the motor
+            Timer_stop(timerMotorControlOL);                            // Stop OpenLoop control timer
+//            Timer_stop(timerAccelerator);                               // Stop OpenLoop accelerator timer
 
             /* Cut current */
-            Event_post(eventPhaseChange, EVENT_PHASE_STOP);     // Cut power to the motor
+            Event_post(eventPhaseChange, EVENT_PHASE_STOP);             // Cut power to the motor
+
+            // Todo: Erase this
+            System_flush();
 
         } else {
 
@@ -190,8 +203,9 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                 if(ctrlType == MOTOR_CTR_OL){
 
                     /* Open Loop control */
-                    speed += (int32_t) joystick;                // Accelerate depending on the joysticks position
-                    if(speed < 0){speed = 0;}                   // Minimum speed -> 0
+                    speed += (int32_t) (joystick/10);                   // Accelerate depending on the joysticks position
+                    if(speed < 0){speed = 0;}                           // Minimum speed -> 0
+                    else if(speed > 85){speed = 89;}
                     // Todo: maximum speed
 
                     if(!speed){
@@ -200,8 +214,12 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
 
                         /* Convert to Timer period and Duty Cycle */
                         timerPeriod = MOTOR_INITIAL_PERIOD - speed;
-                        Timer_setPeriod(timerInitialAcceleration, timerPeriod);
-                        Timer_start(timerInitialAcceleration);
+                        dutyCycleRaw = dutyCycleForOLCtrl(timerPeriod);
+
+                        /* Set speed */
+                        Mailbox_post(mbxDutyCycle, &dutyCycleRaw, BIOS_NO_WAIT);
+                        Timer_setPeriod(timerMotorControlOL, timerPeriod);
+                        Timer_start(timerMotorControlOL);
                     }
 
 
@@ -259,8 +277,7 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
 
     /* Duty cycle and phase */
     uint8_t phase = 0;
-    uint32_t dutyCycle;
-    dutyCycle = (uint32_t) (((uint64_t) PWM_DUTY_FRACTION_MAX * MOTOR_INITIAL_PWM) / 100);     // Initial duty -> cycle 10%
+    uint32_t dutyCycleRaw = dutyCycle(MOTOR_INITIAL_PWM);
 
     /* Events */
     UInt events = 0;
@@ -284,11 +301,14 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
          */
         events = Event_pend(eventPhaseChange, Event_Id_NONE, EVENT_PHASE_STOP | EVENT_CHANGE_PHASE, BIOS_WAIT_FOREVER);
 
+        /* Get duty cycle */
+        Mailbox_pend(mbxDutyCycle, &dutyCycleRaw, BIOS_NO_WAIT);
+
         /* EVENT ACTIONS */
         if(events & EVENT_PHASE_STOP){
 
             /* Reset state */
-            phase = tstart = tstop = i = 0;                                         // Reset phase and speed calculating parameters
+            phase = tstart = tstop = i = dutyCycleRaw = 0;                             // Reset phase and speed calculating parameters
             setPhase(phase);                                                        // Stop motor
 
         } else if (events & EVENT_CHANGE_PHASE){
@@ -312,9 +332,9 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
             tstart = tstop;                                                         // Start counting for next phase
 
             /* Motor State */
-            PWM_setDuty(PWM_A, dutyCycle);
-            PWM_setDuty(PWM_B, dutyCycle);
-            PWM_setDuty(PWM_C, dutyCycle);
+            PWM_setDuty(PWM_A, dutyCycleRaw);
+            PWM_setDuty(PWM_B, dutyCycleRaw);
+            PWM_setDuty(PWM_C, dutyCycleRaw);
             setPhase(phase);
 
         } else {
@@ -489,9 +509,25 @@ void setPhase(uint8_t phase){
             Event_post(eventSpeed, EVENT_SPEED_0);
 
             //Todo: Remove when release
-            System_printf("Phase: CUT CURRENT \n");
-            System_flush();
+//            System_printf("Phase: CUT CURRENT \n");
+//            System_flush();
 
             break;
     }
 }
+
+uint32_t dutyCycle(uint8_t percentage){
+    /* Duty Cycle calculator
+     * In:  Duty cycle from 0 to 100 (percentage %)
+     * Out: Duty value for the PWM driver
+     */
+    return (uint32_t) (((uint64_t) PWM_DUTY_FRACTION_MAX * percentage) / 100);
+}
+
+uint32_t dutyCycleForOLCtrl(uint32_t timerPeriod){
+    if(timerPeriod < 25){       return dutyCycle(35);}
+    else if(timerPeriod < 35){  return dutyCycle(30);}
+    else if(timerPeriod < 60){  return dutyCycle(20);}
+    else {                      return dutyCycle(MOTOR_INITIAL_PWM);}
+}
+

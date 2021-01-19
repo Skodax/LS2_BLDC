@@ -110,10 +110,10 @@ void hwiButtonS1Fx(void){
 //    Event_post(eventMotorControl, Event_Id_01);
 }
 
-void hwiMkiiButton2Fx(void){
-    GPIO_clearInt(MKII_BUTTON2_GPIO);
-//    Event_post(eventMotorControl, Event_Id_01);
-}
+//void hwiMkiiButton2Fx(void){
+//    GPIO_clearInt(MKII_BUTTON2_GPIO);
+////    Event_post(eventMotorControl, Event_Id_01);
+//}
 
 void hwiButtonS2Fx(void){
     GPIO_clearInt(Board_BUTTON_S2_GPIO);
