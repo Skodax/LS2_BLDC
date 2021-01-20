@@ -54,7 +54,7 @@
  ****************************************************************************************************************************************************/
 /* Motor control Events */
 #define EVENT_MOTOR_MBX_SPEED       Event_Id_00
-#define EVENT_MOTOR_ACCELERATE      Event_Id_01
+#define EVENT_MOTOR_TOGGLE_STATUS   Event_Id_01
 #define EVENT_MOTOR_STOP            Event_Id_02
 
 /* Motor phase change Events */
@@ -71,6 +71,8 @@
 #define TIME_AVG_SHIFT              5               // Shift factor for average calculation
 
 /* Motor status */
+#define MOTOR_ENABLED               1               // Motor enabled and ready to go
+#define MOTOR_DISABLED              0
 #define MOTOR_CTR_OL                1               // Motor control type -> Open loop
 #define MOTOR_CTR_CL                0               // Motor control type -> Closed loop
 
@@ -82,6 +84,7 @@ extern Hwi_Handle hwiPort3;
 extern Hwi_Handle hwiPort5;
 
 extern Swi_Handle swiMotorStop;
+extern Swi_Handle swiMotorToggleStatus;
 
 extern Task_Handle taskMotorControl;
 extern Task_Handle taskPhaseChange;
@@ -114,6 +117,7 @@ void hwiPort5Fx(UArg arg);
 void timerMotorControlOLFx(UArg arg);
 
 void swiMotorStopFx(UArg arg1, UArg arg2);
+void swiMotorToggleStatusFx(UArg arg1, UArg arg2);
 
 void taskMotorControlFx(UArg arg1, UArg arg2);
 void taskPhaseChangeFx(UArg arg1, UArg arg2);
@@ -122,6 +126,7 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2);
 void setPhase(uint8_t phase);
 uint32_t dutyCycle(uint8_t percentage);
 uint32_t dutyCycleForOLCtrl(uint32_t timerPeriod);
+void motorStatusLED(uint8_t motorEnabeled);
 
 /****************************************************************************************************************************************************
  *      HWI
@@ -138,8 +143,8 @@ void hwiPort1Fx(UArg arg){
 
     /* Launchpad Button S2 */
     if(P1->IFG & PORT_BIT_4){
-        GPIO_clearInt(Board_BUTTON_S2_GPIO);
-        // Todo swipost
+        GPIO_clearInt(Board_BUTTON_S2_GPIO);                // Clear interrupt flag
+        Swi_post(swiMotorToggleStatus);                     // Toggle motor status (enabled/disabled)
     }
 }
 
@@ -148,8 +153,8 @@ void hwiPort3Fx(UArg arg){
 
     /* MKII Button 2 */
     if(P3->IFG & PORT_BIT_5){
-        GPIO_clearInt(MKII_BUTTON2_GPIO);
-        // Todo swipost
+        GPIO_clearInt(MKII_BUTTON2_GPIO);                   // Clear interrupt flag
+        Swi_post(swiMotorToggleStatus);                     // Toggle motor status (enabled/disabled)
     }
 }
 
@@ -179,6 +184,12 @@ void swiMotorStopFx(UArg arg1, UArg arg2){
     Event_post(eventMotorControl, EVENT_MOTOR_STOP);            // Motor control at stop mode
 }
 
+void swiMotorToggleStatusFx(UArg arg1, UArg arg2){
+
+    /* Toggle motor status */
+    Event_post(eventMotorControl, EVENT_MOTOR_TOGGLE_STATUS);
+}
+
 /****************************************************************************************************************************************************
  *      TASK
  ****************************************************************************************************************************************************/
@@ -188,22 +199,25 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
     uint32_t events;
 
     /* Motor status */
-    int32_t speed = 0;                              // Motor stopped by default
-    uint8_t ctrlType = MOTOR_CTR_OL;                // Motor control Open Loop by default
-    uint32_t timerPeriod = 0;                       // Timer period for OL control
-    uint32_t dutyCycleRaw = 0;                      // Duty cycle for CL control
+    int32_t speed = 0;                                      // Motor stopped by default
+    uint8_t ctrlType = MOTOR_CTR_OL;                        // Motor control Open Loop by default
+    uint32_t timerPeriod = 0;                               // Timer period for OL control
+    uint32_t dutyCycleRaw = 0;                              // Duty cycle for CL control
+    uint8_t motorEnabeled = MOTOR_DISABLED;                 // Motor disabled by default
+    motorStatusLED(motorEnabeled);                          // Turn on Red/Green LEDs depending on the motor status
 
     /* External control */
-    int16_t joystick = 0;                           // No actions by default
+    int16_t joystick = 0;                                   // No actions by default
     Types_FreqHz freq;
-    Timer_getFreq(timerMotorControlOL, &freq);
-    int32_t speedToTIme = 60 * freq.lo / STEPS_PER_LAP;
+    Timer_getFreq(timerMotorControlOL, &freq);              // Get OL motor control timer's frequency
+    int32_t speedToTime = 60 * freq.lo / STEPS_PER_LAP;     // Convert RPM to timer frequency
+
 
     /* Main task loop */
     while(1){
 
         /* Wait for events */
-        events = Event_pend(eventMotorControl, Event_Id_NONE, EVENT_MOTOR_MBX_SPEED | EVENT_MOTOR_ACCELERATE | EVENT_MOTOR_STOP, BIOS_WAIT_FOREVER);
+        events = Event_pend(eventMotorControl, Event_Id_NONE, EVENT_MOTOR_MBX_SPEED | EVENT_MOTOR_TOGGLE_STATUS | EVENT_MOTOR_STOP, BIOS_WAIT_FOREVER);
 
         /* Get data */
         Mailbox_pend(mbxMotorSpeed, &joystick, BIOS_NO_WAIT);                       // Get joystick data
@@ -219,7 +233,17 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
 
         } else {
 
-            if(events & EVENT_MOTOR_MBX_SPEED){
+            if(events & EVENT_MOTOR_TOGGLE_STATUS){
+
+                /* Toggle motor enabled status */
+                motorEnabeled = !motorEnabeled;                                     // Toggle status
+                motorStatusLED(motorEnabeled);                                      // Turn on Red/Green LEDs depending on the motor status
+
+                if(!motorEnabeled){
+                    Swi_post(swiMotorStop);                                         // If disable motor then stop the motor
+                }
+
+            } else if((events & EVENT_MOTOR_MBX_SPEED) & motorEnabeled){
                 if(ctrlType == MOTOR_CTR_OL){
 
                     /* Open Loop control */
@@ -233,7 +257,7 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                     } else {
 
                         /* Convert to Timer period and Duty Cycle */
-                        timerPeriod = speedToTIme / speed;                          // Convert RPM to timer period
+                        timerPeriod = speedToTime / speed;                          // Convert RPM to timer period
                         dutyCycleRaw = dutyCycleForOLCtrl(timerPeriod);             // Get corresponding duty cycle for current speed (Look Up Table)
 
                         /* Set speed */
@@ -256,7 +280,7 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
         }
 
         /* UNEXPECTED EVENT DETECTION */
-        if(events & ~(EVENT_MOTOR_MBX_SPEED | EVENT_MOTOR_ACCELERATE | EVENT_MOTOR_STOP)){
+        if(events & ~(EVENT_MOTOR_MBX_SPEED | EVENT_MOTOR_TOGGLE_STATUS | EVENT_MOTOR_STOP)){
 
             /* Safe stop */
             Event_post(eventPhaseChange, EVENT_PHASE_STOP);                         // Cut power to the motor
@@ -534,5 +558,16 @@ uint32_t dutyCycleForOLCtrl(uint32_t timerPeriod){
     else if(timerPeriod < 50){  return dutyCycle(20);}
     else if(timerPeriod < 60){  return dutyCycle(15);}
     else {                      return dutyCycle(10);}
+}
+
+void motorStatusLED(uint8_t motorEnabeled){
+
+    /* Launchpad LEDs */
+    GPIO_write(Board_LED_Red_GPIO, !motorEnabeled);                     // Turn on Red LED when the motor is disabled
+    GPIO_write(Board_LED_Green_GPIO, motorEnabeled);                    // Turn on Green LED when the motor is enabled
+
+    /* MKII Boosterpack LEDs */
+    GPIO_write(MKII_LED_Red_GPIO, !motorEnabeled);                      // Turn on Red LED when the motor is disabled
+    GPIO_write(MKII_LED_Green_GPIO, motorEnabeled);                     // Turn on Green LED when the motor is enabled
 }
 

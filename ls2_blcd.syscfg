@@ -19,6 +19,8 @@ const GPIO5   = GPIO.addInstance();
 const GPIO6   = GPIO.addInstance();
 const GPIO7   = GPIO.addInstance();
 const GPIO8   = GPIO.addInstance();
+const GPIO13  = GPIO.addInstance();
+const GPIO14  = GPIO.addInstance();
 const PWM     = scripting.addModule("/ti/drivers/PWM", {}, false);
 const PWM1    = PWM.addInstance();
 const PWM2    = PWM.addInstance();
@@ -32,6 +34,7 @@ const Button1 = Button.addInstance();
 const Button2 = Button.addInstance();
 const LED     = scripting.addModule("/ti/drivers/apps/LED", {}, false);
 const LED1    = LED.addInstance();
+const LED2    = LED.addInstance();
 
 /**
  * Write custom configuration values to the imported modules.
@@ -86,6 +89,14 @@ GPIO8.interruptTrigger = "Falling Edge";
 GPIO8.$name            = "MKII_BUTTON2_GPIO";
 GPIO8.gpioPin.$assign  = "boosterpack.32";
 
+GPIO13.$name           = "MKII_LED_Red_GPIO";
+GPIO13.mode            = "Output";
+GPIO13.gpioPin.$assign = "boosterpack.39";
+
+GPIO14.mode            = "Output";
+GPIO14.$name           = "MKII_LED_Green_GPIO";
+GPIO14.gpioPin.$assign = "boosterpack.38";
+
 PWM1.$name                = "PHASE_A_HIN";
 PWM1.timer.$assign        = "Timer_A1";
 PWM1.timer.pwmPin.$assign = "expansion.24";
@@ -123,7 +134,10 @@ Button2.$hardware     = system.deviceData.board.components.S2;
 Button2.gpioPin.$name = "Board_BUTTON_S2_GPIO";
 
 LED1.$hardware = system.deviceData.board.components.LED1_RED;
-LED1.$name     = "Board_LED_0";
+LED1.$name     = "Board_LED_Red";
+
+LED2.$name     = "Board_LED_Green";
+LED2.$hardware = system.deviceData.board.components.LED2_GREEN;
 
 /**
  * Pinmux solution for unlocked pins/peripherals. This ensures that minor changes to the automatic solver in a future
@@ -134,3 +148,4 @@ RTOS.timer0.resource.$suggestSolution    = "Timer_A0";
 Button1.gpioPin.gpioPin.$suggestSolution = "P1.1.GPIO/EUSCI_A0_SPI.CLK";
 Button2.gpioPin.gpioPin.$suggestSolution = "P1.4.GPIO/EUSCI_B0_SPI.STE";
 LED1.gpioPin.gpioPin.$suggestSolution    = "P1.0.GPIO/EUSCI_A0_SPI.STE";
+LED2.gpioPin.gpioPin.$suggestSolution    = "P2.1.GPIO/EUSCI_A1_SPI.CLK";

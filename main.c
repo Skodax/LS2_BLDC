@@ -82,6 +82,12 @@ int main()
     GPIO_enableInt(MKII_BUTTON1_GPIO);
     GPIO_enableInt(MKII_BUTTON2_GPIO);
 
+    /* Clear all possible interrupts */
+    GPIO_clearInt(Board_BUTTON_S1_GPIO);
+    GPIO_clearInt(Board_BUTTON_S2_GPIO);
+    GPIO_clearInt(MKII_BUTTON1_GPIO);
+    GPIO_clearInt(MKII_BUTTON2_GPIO);
+
     /* Start message */
     System_printf("Starting... \n");
     System_flush();
