@@ -30,9 +30,9 @@
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/*
- *  ======== LS2_BLDC ========
- */
+/****************************************************************************************************************************************************
+ *      LS2 BLDC MOTOR CONTROLER
+ ****************************************************************************************************************************************************/
 
 /* XDC Module Headers */
 #include <xdc/std.h>
@@ -65,24 +65,12 @@
 /* Board header files */
 #include <ti/drivers/Board.h>
 
-/* Handlers RTOS */
-extern Event_Handle eventMotorControl;
-
-/* User libraries */
-#include "library/BLDC/BLDC_driver.h"
-#include "library/LCD/LCD.h"
-
-
-
-/* Function declaration */
-
-
-/*
- *  ======== main ========
- */
+/****************************************************************************************************************************************************
+ *      Main Function
+ ****************************************************************************************************************************************************/
 int main()
 {
-    /* Call driver init functions */
+    /* Call driver initializer functions */
     Board_init();
     GPIO_init();
     PWM_init();
@@ -94,7 +82,7 @@ int main()
     GPIO_enableInt(MKII_BUTTON1_GPIO);
     GPIO_enableInt(MKII_BUTTON2_GPIO);
 
-    /* Start msg */
+    /* Start message */
     System_printf("Starting... \n");
     System_flush();
 
@@ -102,32 +90,3 @@ int main()
     BIOS_start();
     return(0);
 }
-
-// HWI - ?
-
-void hwiButtonS1Fx(void){
-    GPIO_clearInt(Board_BUTTON_S1_GPIO);
-//    Event_post(eventMotorControl, Event_Id_01);
-}
-
-//void hwiMkiiButton2Fx(void){
-//    GPIO_clearInt(MKII_BUTTON2_GPIO);
-////    Event_post(eventMotorControl, Event_Id_01);
-//}
-
-void hwiButtonS2Fx(void){
-    GPIO_clearInt(Board_BUTTON_S2_GPIO);
-//    Event_post(eventMotorControl, Event_Id_02);
-    BLDC_stop();
-}
-
-void hwiMkiiButton1Fx(void){
-    GPIO_clearInt(MKII_BUTTON1_GPIO);
-//    Event_post(eventMotorControl, Event_Id_02);
-    BLDC_stop();
-}
-
-
-
-
-

@@ -79,13 +79,11 @@ GPIO6.gpioPin.$assign = "boosterpack.31";
 GPIO7.$name            = "MKII_BUTTON1_GPIO";
 GPIO7.pull             = "Pull Up";
 GPIO7.interruptTrigger = "Falling Edge";
-GPIO7.callbackFunction = "hwiMkiiButton1Fx";
 GPIO7.gpioPin.$assign  = "boosterpack.33";
 
 GPIO8.pull             = "Pull Up";
 GPIO8.interruptTrigger = "Falling Edge";
 GPIO8.$name            = "MKII_BUTTON2_GPIO";
-GPIO8.callbackFunction = "hwiMkiiButton2Fx";
 GPIO8.gpioPin.$assign  = "boosterpack.32";
 
 PWM1.$name                = "PHASE_A_HIN";
@@ -116,15 +114,13 @@ SPI1.spi.dmaRxChannel.$assign          = "DMA_CH1";
 SPI1.spi.dmaTxChannel.$assign          = "DMA_CH0";
 SPI1.spi.dmaInterruptNumber.$assign    = "DMA_INT1";
 
-Button1.$name                    = "Board_BUTTON_S1";
-Button1.$hardware                = system.deviceData.board.components.S1;
-Button1.gpioPin.$name            = "Board_BUTTON_S1_GPIO";
-Button1.gpioPin.callbackFunction = "hwiButtonS1Fx";
+Button1.$name         = "Board_BUTTON_S1";
+Button1.$hardware     = system.deviceData.board.components.S1;
+Button1.gpioPin.$name = "Board_BUTTON_S1_GPIO";
 
-Button2.$name                    = "Board_BUTTON_S2";
-Button2.$hardware                = system.deviceData.board.components.S2;
-Button2.gpioPin.$name            = "Board_BUTTON_S2_GPIO";
-Button2.gpioPin.callbackFunction = "hwiButtonS2Fx";
+Button2.$name         = "Board_BUTTON_S2";
+Button2.$hardware     = system.deviceData.board.components.S2;
+Button2.gpioPin.$name = "Board_BUTTON_S2_GPIO";
 
 LED1.$hardware = system.deviceData.board.components.LED1_RED;
 LED1.$name     = "Board_LED_0";

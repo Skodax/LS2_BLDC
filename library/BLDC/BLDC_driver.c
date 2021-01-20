@@ -39,8 +39,14 @@
 #include <ti/drivers/GPIO.h>
 #include <ti/drivers/PWM.h>
 
+/* Driverib */
+#include <ti/devices/msp432p4xx/driverlib/gpio.h>                           // Used for retrieving IFG from the ports
+
 /* Board header files */
 #include <ti/drivers/Board.h>
+
+/* User libraries */
+#include "../utilities/utilities.h"
 
 
 /****************************************************************************************************************************************************
@@ -68,26 +74,25 @@
 #define MOTOR_CTR_OL                1               // Motor control type -> Open loop
 #define MOTOR_CTR_CL                0               // Motor control type -> Closed loop
 
-/* Motor acceleration */
-#define MOTOR_INITIAL_PWM           10      //40
-#define MOTOR_INITIAL_PERIOD        105
-#define MOTOR_MIN_PERIOD            35      //20
-#define MOTOR_INITIAL_ACC           5       //1
-
-
 /****************************************************************************************************************************************************
  *      RTOS HANDLERS
  ****************************************************************************************************************************************************/
+extern Hwi_Handle hwiPort1;
+extern Hwi_Handle hwiPort3;
+extern Hwi_Handle hwiPort5;
 
-extern Timer_Handle timerMotorControlOL;
-//extern Timer_Handle timerAccelerator;
-//extern Swi_Handle swiAccelerateMotor;
+extern Swi_Handle swiMotorStop;
+
 extern Task_Handle taskMotorControl;
 extern Task_Handle taskPhaseChange;
 extern Task_Handle taskSpeedCalculator;
+
+extern Timer_Handle timerMotorControlOL;
+
 extern Event_Handle eventMotorControl;
 extern Event_Handle eventPhaseChange;
 extern Event_Handle eventSpeed;
+
 extern Mailbox_Handle mbxPhaseChangeTime;
 extern Mailbox_Handle mbxTheoricalSpeed;
 extern Mailbox_Handle mbxMotorSpeed;
@@ -103,11 +108,17 @@ PWM_Handle PWM_C;
 /****************************************************************************************************************************************************
  *      FUNCTION DECLARATION
  ****************************************************************************************************************************************************/
+void hwiPort1Fx(UArg arg);
+void hwiPort3Fx(UArg arg);
+void hwiPort5Fx(UArg arg);
 void timerMotorControlOLFx(UArg arg);
-//void timerAcceleratorFx(UArg arg);
+
+void swiMotorStopFx(UArg arg1, UArg arg2);
+
 void taskMotorControlFx(UArg arg1, UArg arg2);
 void taskPhaseChangeFx(UArg arg1, UArg arg2);
 void taskSpeedCalculatorFx(UArg arg1, UArg arg2);
+
 void setPhase(uint8_t phase);
 uint32_t dutyCycle(uint8_t percentage);
 uint32_t dutyCycleForOLCtrl(uint32_t timerPeriod);
@@ -116,44 +127,57 @@ uint32_t dutyCycleForOLCtrl(uint32_t timerPeriod);
  *      HWI
  ****************************************************************************************************************************************************/
 
+/* Port 1 */
+void hwiPort1Fx(UArg arg){
+
+    /* Launchpad Button S1 */
+    if(P1->IFG & PORT_BIT_1){
+        GPIO_clearInt(Board_BUTTON_S1_GPIO);                // Clear interrupt flag
+        Swi_post(swiMotorStop);                             // Stop motor
+    }
+
+    /* Launchpad Button S2 */
+    if(P1->IFG & PORT_BIT_4){
+        GPIO_clearInt(Board_BUTTON_S2_GPIO);
+        // Todo swipost
+    }
+}
+
+/* Port 3 */
+void hwiPort3Fx(UArg arg){
+
+    /* MKII Button 2 */
+    if(P3->IFG & PORT_BIT_5){
+        GPIO_clearInt(MKII_BUTTON2_GPIO);
+        // Todo swipost
+    }
+}
+
+/* Port 5 */
+void hwiPort5Fx(UArg arg){
+
+    /* MKII Button 1 */
+    if(P5->IFG & PORT_BIT_1){
+        GPIO_clearInt(MKII_BUTTON1_GPIO);                       // Clear interrupt flag
+        Swi_post(swiMotorStop);                                 // Stop the motor
+    }
+}
+
+/* Timer */
 void timerMotorControlOLFx(UArg arg){
-    // CHANGE PHASE
-    Event_post(eventPhaseChange, EVENT_CHANGE_PHASE);
+    Event_post(eventPhaseChange, EVENT_CHANGE_PHASE);           // Change phase (next one)
 }
 
-//void timerAcceleratorFx(UArg arg){
-//    Swi_post(swiAccelerateMotor);
-//}
-
-void hwiMkiiButton2Fx(void){
-    GPIO_clearInt(MKII_BUTTON2_GPIO);
-//    Event_post(eventMotorControl, Event_Id_01);
-    UInt32 timerPeriod;
-    timerPeriod = Timer_getPeriod(timerMotorControlOL);
-    System_printf("Timer period: %4d\n", timerPeriod);
-}
 
 /****************************************************************************************************************************************************
  *      SWI
  ****************************************************************************************************************************************************/
+void swiMotorStopFx(UArg arg1, UArg arg2){
 
-//void swiAccelerateMotorFx(UArg arg1, UArg arg2){
-//
-//    // ACCELERATE MOTOR
-//    // Reduce timer period
-//    UInt32 timerPeriod;
-//    timerPeriod = Timer_getPeriod(timerMotorControlOL);
-//    timerPeriod -= MOTOR_INITIAL_ACC;       // 5
-//
-//    if(timerPeriod > MOTOR_MIN_PERIOD){   // 35
-//        Timer_setPeriod(timerMotorControlOL, timerPeriod);
-//        Timer_start(timerMotorControlOL);
-//    } else {
-//        Timer_stop(timerAccelerator);
-//    }
-//
-//}
-
+    /* Trigger Motor stop Events */
+    Event_post(eventPhaseChange, EVENT_PHASE_STOP);             // Cut power to the motor
+    Event_post(eventMotorControl, EVENT_MOTOR_STOP);            // Motor control at stop mode
+}
 
 /****************************************************************************************************************************************************
  *      TASK
@@ -171,6 +195,9 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
 
     /* External control */
     int16_t joystick = 0;                           // No actions by default
+    Types_FreqHz freq;
+    Timer_getFreq(timerMotorControlOL, &freq);
+    int32_t speedToTIme = 60 * freq.lo / STEPS_PER_LAP;
 
     /* Main task loop */
     while(1){
@@ -185,17 +212,10 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
         if((events & EVENT_MOTOR_STOP)){
 
             /* Stop motor */
-            speed = dutyCycleRaw = timerPeriod = joystick = 0;          // Reset control variables
-            ctrlType = MOTOR_CTR_OL;                                    // Set motor control to OL
-            Mailbox_post(mbxDutyCycle, &dutyCycleRaw, BIOS_NO_WAIT);    // Send duty cycle to the motor
-            Timer_stop(timerMotorControlOL);                            // Stop OpenLoop control timer
-//            Timer_stop(timerAccelerator);                               // Stop OpenLoop accelerator timer
-
-            /* Cut current */
-            Event_post(eventPhaseChange, EVENT_PHASE_STOP);             // Cut power to the motor
-
-            // Todo: Erase this
-            System_flush();
+            speed = dutyCycleRaw = timerPeriod = joystick = 0;                      // Reset control variables
+            ctrlType = MOTOR_CTR_OL;                                                // Set motor control to OL
+            Mailbox_post(mbxDutyCycle, &dutyCycleRaw, BIOS_NO_WAIT);                // Send duty cycle to the motor
+            Timer_stop(timerMotorControlOL);                                        // Stop OpenLoop control timer
 
         } else {
 
@@ -203,31 +223,29 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                 if(ctrlType == MOTOR_CTR_OL){
 
                     /* Open Loop control */
-                    speed += (int32_t) (joystick/10);                   // Accelerate depending on the joysticks position
-                    if(speed < 0){speed = 0;}                           // Minimum speed -> 0
-                    else if(speed > 85){speed = 89;}
-                    // Todo: maximum speed
+                    speed += (int32_t) (joystick);///10);                           // Accelerate depending on the joysticks position
+                    if(speed < 0){speed = 0;}                                       // Minimum speed -> 0 RPM
+                    else if(speed > 3000){speed = 3000;}                            // Maximum speed in OL control -> 3000 RPM
 
+                    /* Motor action */
                     if(!speed){
-                        Event_post(eventMotorControl, EVENT_MOTOR_STOP);        // If speed is 0 then stop the motor
+                        Swi_post(swiMotorStop);                                     // If speed is 0 then stop the motor
                     } else {
 
                         /* Convert to Timer period and Duty Cycle */
-                        timerPeriod = MOTOR_INITIAL_PERIOD - speed;
-                        dutyCycleRaw = dutyCycleForOLCtrl(timerPeriod);
+                        timerPeriod = speedToTIme / speed;                          // Convert RPM to timer period
+                        dutyCycleRaw = dutyCycleForOLCtrl(timerPeriod);             // Get corresponding duty cycle for current speed (Look Up Table)
 
                         /* Set speed */
-                        Mailbox_post(mbxDutyCycle, &dutyCycleRaw, BIOS_NO_WAIT);
-                        Timer_setPeriod(timerMotorControlOL, timerPeriod);
-                        Timer_start(timerMotorControlOL);
+                        Mailbox_post(mbxDutyCycle, &dutyCycleRaw, BIOS_NO_WAIT);    // Send Duty Cycle to the actual motor drive task (taskPhaseChange)
+                        Timer_setPeriod(timerMotorControlOL, timerPeriod);          // Set timer period (set motor speed)
+                        Timer_start(timerMotorControlOL);                           // Restart timer (with setPeriod timer automatically stops)
                     }
-
-
-
                 } else {
 
+                    /* UNKNOWN MOTOR CONTROL TYPE */
                     /* Safe stop */
-                    Event_post(eventPhaseChange, EVENT_PHASE_STOP);     // Cut power to the motor
+                    Swi_post(swiMotorStop);
 
                     /* Report error and halt */
                     System_printf("Unknown ctrlType on taskMotorControl. Event: %d \n", ctrlType);
@@ -237,11 +255,11 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
             }
         }
 
-        /* Unexpected event detector */
+        /* UNEXPECTED EVENT DETECTION */
         if(events & ~(EVENT_MOTOR_MBX_SPEED | EVENT_MOTOR_ACCELERATE | EVENT_MOTOR_STOP)){
 
             /* Safe stop */
-            Event_post(eventPhaseChange, EVENT_PHASE_STOP);     // Cut power to the motor
+            Event_post(eventPhaseChange, EVENT_PHASE_STOP);                         // Cut power to the motor
 
             /* Report error and halt */
             System_printf("Unknown event on taskMotorControl. Event: %d \n", events);
@@ -277,7 +295,7 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
 
     /* Duty cycle and phase */
     uint8_t phase = 0;
-    uint32_t dutyCycleRaw = dutyCycle(MOTOR_INITIAL_PWM);
+    uint32_t dutyCycleRaw = 0;//dutyCycle(MOTOR_INITIAL_PWM);
 
     /* Events */
     UInt events = 0;
@@ -407,30 +425,6 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
 /****************************************************************************************************************************************************
  *      FUNCTIONS
  ****************************************************************************************************************************************************/
-
-/* Public */ // Deprected
-//void BLDC_start(void){
-//
-//    /* Start Initial acceleration timer */
-//    Timer_setPeriod(timerInitialAcceleration, MOTOR_INITIAL_PERIOD);
-//    Timer_start(timerInitialAcceleration);
-//    Timer_start(timerAccelerator);
-//}
-
-void BLDC_stop(void){
-
-    /* Stop Initial acceleration timer and motor */
-//    Timer_stop(timerInitialAcceleration);
-//    Timer_stop(timerAccelerator);
-//    Event_post(eventPhaseChange, EVENT_PHASE_STOP);
-
-    //UInt32 timerPeriod;
-    //timerPeriod = Timer_getPeriod(timerInitialAcceleration);
-    //System_printf("Timer Period: %d \n", timerPeriod);
-    Event_post(eventMotorControl, EVENT_MOTOR_STOP);
-}
-
-/* Private */
 void setPhase(uint8_t phase){
 
     switch (phase) {
@@ -505,7 +499,7 @@ void setPhase(uint8_t phase){
             GPIO_write(PHASE_B_LIN, 0);
             GPIO_write(PHASE_C_LIN, 0);
 
-            // Set speed tot 0
+            // Set speed to 0
             Event_post(eventSpeed, EVENT_SPEED_0);
 
             //Todo: Remove when release
@@ -525,9 +519,20 @@ uint32_t dutyCycle(uint8_t percentage){
 }
 
 uint32_t dutyCycleForOLCtrl(uint32_t timerPeriod){
+
+    /* Open loop Duty Cycle calculator
+     * Depending on the speed that the motor is turning in OL
+     * demands a different Duty Cycle.
+     * This function is a look up table with experimental values
+     * that returns the optimal Duty Cycle value for the giving
+     * timer period.
+     */
+
     if(timerPeriod < 25){       return dutyCycle(35);}
-    else if(timerPeriod < 35){  return dutyCycle(30);}
-    else if(timerPeriod < 60){  return dutyCycle(20);}
-    else {                      return dutyCycle(MOTOR_INITIAL_PWM);}
+    else if(timerPeriod < 30){  return dutyCycle(30);}
+    else if(timerPeriod < 40){  return dutyCycle(25);}
+    else if(timerPeriod < 50){  return dutyCycle(20);}
+    else if(timerPeriod < 60){  return dutyCycle(15);}
+    else {                      return dutyCycle(10);}
 }
 

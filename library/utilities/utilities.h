@@ -11,6 +11,21 @@
 #include <xdc/std.h>
 
 /****************************************************************************************************************************************************
+ *      MACROS
+ ****************************************************************************************************************************************************/
+
+/* Port bits */
+#define PORT_BIT_0                  0x01            // First bit of the port
+#define PORT_BIT_1                  0x02            // Second bit of the port
+#define PORT_BIT_2                  0x04            // Third bit of the port
+#define PORT_BIT_3                  0x08            // Fourth bit of the port
+#define PORT_BIT_4                  0x10            // Fifth bit of the port
+#define PORT_BIT_5                  0x20            // Sixth bit of the port
+#define PORT_BIT_6                  0x40            // Seventh bit of the port
+#define PORT_BIT_7                  0x80            // Eighth bit of the port
+
+
+/****************************************************************************************************************************************************
  *      DEFINITIONS
  ****************************************************************************************************************************************************/
 typedef struct{
