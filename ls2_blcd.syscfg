@@ -19,8 +19,8 @@ const GPIO5   = GPIO.addInstance();
 const GPIO6   = GPIO.addInstance();
 const GPIO7   = GPIO.addInstance();
 const GPIO8   = GPIO.addInstance();
-const GPIO13  = GPIO.addInstance();
-const GPIO14  = GPIO.addInstance();
+const GPIO9   = GPIO.addInstance();
+const GPIO10  = GPIO.addInstance();
 const PWM     = scripting.addModule("/ti/drivers/PWM", {}, false);
 const PWM1    = PWM.addInstance();
 const PWM2    = PWM.addInstance();
@@ -89,13 +89,13 @@ GPIO8.interruptTrigger = "Falling Edge";
 GPIO8.$name            = "MKII_BUTTON2_GPIO";
 GPIO8.gpioPin.$assign  = "boosterpack.32";
 
-GPIO13.$name           = "MKII_LED_Red_GPIO";
-GPIO13.mode            = "Output";
-GPIO13.gpioPin.$assign = "boosterpack.39";
+GPIO9.$name           = "MKII_LED_Red_GPIO";
+GPIO9.mode            = "Output";
+GPIO9.gpioPin.$assign = "boosterpack.39";
 
-GPIO14.mode            = "Output";
-GPIO14.$name           = "MKII_LED_Green_GPIO";
-GPIO14.gpioPin.$assign = "boosterpack.38";
+GPIO10.mode            = "Output";
+GPIO10.$name           = "MKII_LED_Green_GPIO";
+GPIO10.gpioPin.$assign = "boosterpack.38";
 
 PWM1.$name                = "PHASE_A_HIN";
 PWM1.timer.$assign        = "Timer_A1";

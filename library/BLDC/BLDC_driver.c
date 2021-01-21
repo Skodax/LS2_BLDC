@@ -41,6 +41,9 @@
 
 /* Driverib */
 #include <ti/devices/msp432p4xx/driverlib/gpio.h>                           // Used for retrieving IFG from the ports
+//#include <ti/devices/msp432p4xx/driverlib/timer_a.h>                        // Used to set TA2 clock source to SMCK
+//#include <ti/devices/msp432p4xx/inc/msp432.h>
+
 
 /* Board header files */
 #include <ti/drivers/Board.h>
@@ -75,6 +78,10 @@
 #define MOTOR_DISABLED              0
 #define MOTOR_CTR_OL                1               // Motor control type -> Open loop
 #define MOTOR_CTR_CL                0               // Motor control type -> Closed loop
+
+/* Motor limits */
+#define MOTOR_MAX_DUTY              32              // Max duty cycle that the PC power station can supply
+#define MOTOR_OL_MAX_SPEED          2850            // Max speed with the MOTOR_MAX_DUTY
 
 /****************************************************************************************************************************************************
  *      RTOS HANDLERS
@@ -208,6 +215,8 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
 
     /* External control */
     int16_t joystick = 0;                                   // No actions by default
+    //TA2CTL |= TASSEL__SMCLK;
+    //TA2CTL &= ~TASSEL__SMCLK;
     Types_FreqHz freq;
     Timer_getFreq(timerMotorControlOL, &freq);              // Get OL motor control timer's frequency
     int32_t speedToTime = 60 * freq.lo / STEPS_PER_LAP;     // Convert RPM to timer frequency
@@ -247,9 +256,11 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                 if(ctrlType == MOTOR_CTR_OL){
 
                     /* Open Loop control */
-                    speed += (int32_t) (joystick);///10);                           // Accelerate depending on the joysticks position
-                    if(speed < 0){speed = 0;}                                       // Minimum speed -> 0 RPM
-                    else if(speed > 3000){speed = 3000;}                            // Maximum speed in OL control -> 3000 RPM
+                    speed += (int32_t) (joystick);///10);                               // Accelerate depending on the joysticks position
+                    if(speed < 0){speed = 0;}                                           // Minimum speed -> 0 RPM
+                    else if(speed > MOTOR_OL_MAX_SPEED){
+                        speed = MOTOR_OL_MAX_SPEED;
+                    }    // Maximum speed in OL control -> Around 3000 RPM
 
                     /* Motor action */
                     if(!speed){
@@ -319,7 +330,7 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
 
     /* Duty cycle and phase */
     uint8_t phase = 0;
-    uint32_t dutyCycleRaw = 0;//dutyCycle(MOTOR_INITIAL_PWM);
+    uint32_t dutyCycleRaw = 0;
 
     /* Events */
     UInt events = 0;
@@ -350,8 +361,8 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
         if(events & EVENT_PHASE_STOP){
 
             /* Reset state */
-            phase = tstart = tstop = i = dutyCycleRaw = 0;                             // Reset phase and speed calculating parameters
-            setPhase(phase);                                                        // Stop motor
+            phase = tstart = tstop = i = dutyCycleRaw = 0;                          // Reset phase and speed calculating parameters
+        setPhase(phase);                                                            // Stop motor
 
         } else if (events & EVENT_CHANGE_PHASE){
 
@@ -552,9 +563,9 @@ uint32_t dutyCycleForOLCtrl(uint32_t timerPeriod){
      * timer period.
      */
 
-    if(timerPeriod < 25){       return dutyCycle(35);}
+    if(timerPeriod < 25){       return dutyCycle(MOTOR_MAX_DUTY);}
     else if(timerPeriod < 30){  return dutyCycle(30);}
-    else if(timerPeriod < 40){  return dutyCycle(25);}
+    else if(timerPeriod < 35){  return dutyCycle(25);}
     else if(timerPeriod < 50){  return dutyCycle(20);}
     else if(timerPeriod < 60){  return dutyCycle(15);}
     else {                      return dutyCycle(10);}
