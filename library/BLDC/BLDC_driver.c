@@ -41,9 +41,6 @@
 
 /* Driverib */
 #include <ti/devices/msp432p4xx/driverlib/gpio.h>                           // Used for retrieving IFG from the ports
-//#include <ti/devices/msp432p4xx/driverlib/timer_a.h>                        // Used to set TA2 clock source to SMCK
-//#include <ti/devices/msp432p4xx/inc/msp432.h>
-
 
 /* Board header files */
 #include <ti/drivers/Board.h>
@@ -80,8 +77,7 @@
 #define MOTOR_CTR_CL                0               // Motor control type -> Closed loop
 
 /* Motor limits */
-#define MOTOR_MAX_DUTY              32              // Max duty cycle that the PC power station can supply
-#define MOTOR_OL_MAX_SPEED          2850            // Max speed with the MOTOR_MAX_DUTY
+#define MOTOR_OL_MAX_SPEED          2500            // Max speed with the MOTOR_MAX_DUTY
 
 /****************************************************************************************************************************************************
  *      RTOS HANDLERS
@@ -134,7 +130,7 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2);
 
 void setPhase(uint8_t phase);
 uint32_t dutyCycle(uint8_t percentage);
-uint32_t dutyCycleForOLCtrl(uint32_t timerPeriod);
+uint32_t dutyCycleForOLCtrl(int32_t speed);
 void motorStatusLED(uint8_t motorEnabeled);
 
 /****************************************************************************************************************************************************
@@ -221,8 +217,6 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
 
     /* External control */
     int16_t joystick = 0;                                   // No actions by default
-    //TA2CTL |= TASSEL__SMCLK;
-    //TA2CTL &= ~TASSEL__SMCLK;
     Types_FreqHz freq;
     Timer_getFreq(timerMotorControlOL, &freq);              // Get OL motor control timer's frequency
     int32_t speedToTime = 60 * freq.lo / STEPS_PER_LAP;     // Convert RPM to timer frequency
@@ -278,11 +272,11 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                     */
 
                     /* Acceleration timer */
-                    speed += 20;
+                    speed += 150;
                     if(speed > MOTOR_OL_MAX_SPEED){
                         speed = MOTOR_OL_MAX_SPEED;
                         Timer_stop(timerMotorAcc);
-                    }          // Maximum speed in OL control
+                    }
 
 
                     /* Motor action */
@@ -292,7 +286,7 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
 
                         /* Convert to Timer period and Duty Cycle */
                         timerPeriod = speedToTime / speed;                          // Convert RPM to timer period
-                        dutyCycleRaw = dutyCycleForOLCtrl(timerPeriod);             // Get corresponding duty cycle for current speed (Look Up Table)
+                        dutyCycleRaw = dutyCycleForOLCtrl(speed);                   // Get corresponding duty cycle for current speed (Look Up Table)
 
                         /* Set speed */
                         Mailbox_post(mbxDutyCycle, &dutyCycleRaw, BIOS_NO_WAIT);    // Send Duty Cycle to the actual motor drive task (taskPhaseChange)
@@ -576,7 +570,7 @@ uint32_t dutyCycle(uint8_t percentage){
     return (uint32_t) (((uint64_t) PWM_DUTY_FRACTION_MAX * percentage) / 100);
 }
 
-uint32_t dutyCycleForOLCtrl(uint32_t timerPeriod){
+uint32_t dutyCycleForOLCtrl(int32_t speed){
 
     /* Open loop Duty Cycle calculator
      * Depending on the speed that the motor is turning in OL
@@ -586,12 +580,11 @@ uint32_t dutyCycleForOLCtrl(uint32_t timerPeriod){
      * timer period.
      */
 
-    if(timerPeriod < 25){       return dutyCycle(MOTOR_MAX_DUTY);}
-    else if(timerPeriod < 30){  return dutyCycle(30);}
-    else if(timerPeriod < 35){  return dutyCycle(25);}
-    else if(timerPeriod < 50){  return dutyCycle(20);}
-    else if(timerPeriod < 60){  return dutyCycle(15);}
-    else {                      return dutyCycle(10);}
+    if(speed > 1800){  return dutyCycle(30);}
+    else if(speed > 1400){  return dutyCycle(25);}
+    else if(speed > 1100){  return dutyCycle(20);}
+    else if(speed > 700){   return dutyCycle(15);}
+    else {                  return dutyCycle(10);}
 }
 
 void motorStatusLED(uint8_t motorEnabeled){
