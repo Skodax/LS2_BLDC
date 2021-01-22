@@ -272,7 +272,7 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                     */
 
                     /* Acceleration timer */
-                    speed += 150;
+                    speed += 50;
                     if(speed > MOTOR_OL_MAX_SPEED){
                         speed = MOTOR_OL_MAX_SPEED;
                         Timer_stop(timerMotorAcc);
