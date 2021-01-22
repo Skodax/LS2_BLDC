@@ -156,7 +156,8 @@ void taskJoystickReadFx(UArg arg1, UArg arg2){
                     prevJoytick.y = joystick.y;
                 }
 
-                Mailbox_post(mbxMotorSpeed, &joystick.y, BIOS_NO_WAIT);                                 // Send the control speed to the motor
+                /* Acceleration timer */
+//                Mailbox_post(mbxMotorSpeed, &joystick.y, BIOS_NO_WAIT);                                 // Send the control speed to the motor
 
 
             } else {

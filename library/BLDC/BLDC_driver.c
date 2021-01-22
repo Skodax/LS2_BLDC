@@ -98,6 +98,7 @@ extern Task_Handle taskPhaseChange;
 extern Task_Handle taskSpeedCalculator;
 
 extern Timer_Handle timerMotorControlOL;
+extern Timer_Handle timerMotorAcc;
 
 extern Event_Handle eventMotorControl;
 extern Event_Handle eventPhaseChange;
@@ -122,6 +123,7 @@ void hwiPort1Fx(UArg arg);
 void hwiPort3Fx(UArg arg);
 void hwiPort5Fx(UArg arg);
 void timerMotorControlOLFx(UArg arg);
+void timerMotorAccFx(UArg arg);
 
 void swiMotorStopFx(UArg arg1, UArg arg2);
 void swiMotorToggleStatusFx(UArg arg1, UArg arg2);
@@ -180,6 +182,10 @@ void timerMotorControlOLFx(UArg arg){
     Event_post(eventPhaseChange, EVENT_CHANGE_PHASE);           // Change phase (next one)
 }
 
+/* Timer - Acceleration */
+void timerMotorAccFx(UArg arg){
+    Event_post(eventMotorControl, EVENT_MOTOR_MBX_SPEED);
+}
 
 /****************************************************************************************************************************************************
  *      SWI
@@ -248,19 +254,36 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                 motorEnabeled = !motorEnabeled;                                     // Toggle status
                 motorStatusLED(motorEnabeled);                                      // Turn on Red/Green LEDs depending on the motor status
 
+                /* Acceleration timer */
+                if(motorEnabeled){
+                    speed = 0;
+                    Timer_start(timerMotorAcc);
+                } else {
+                    Timer_stop(timerMotorAcc);
+                }
+
                 if(!motorEnabeled){
                     Swi_post(swiMotorStop);                                         // If disable motor then stop the motor
                 }
+
 
             } else if((events & EVENT_MOTOR_MBX_SPEED) & motorEnabeled){
                 if(ctrlType == MOTOR_CTR_OL){
 
                     /* Open Loop control */
+                    /*
                     speed += (int32_t) (joystick);///10);                               // Accelerate depending on the joysticks position
                     if(speed < 0){speed = 0;}                                           // Minimum speed -> 0 RPM
-                    else if(speed > MOTOR_OL_MAX_SPEED){
+                    else if(speed > MOTOR_OL_MAX_SPEED){speed = MOTOR_OL_MAX_SPEED;}    // Maximum speed in OL control
+                    */
+
+                    /* Acceleration timer */
+                    speed += 20;
+                    if(speed > MOTOR_OL_MAX_SPEED){
                         speed = MOTOR_OL_MAX_SPEED;
-                    }    // Maximum speed in OL control -> Around 3000 RPM
+                        Timer_stop(timerMotorAcc);
+                    }          // Maximum speed in OL control
+
 
                     /* Motor action */
                     if(!speed){
