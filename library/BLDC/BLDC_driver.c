@@ -111,6 +111,7 @@ extern Mailbox_Handle mbxDutyCycle;
 PWM_Handle PWM_A;
 PWM_Handle PWM_B;
 PWM_Handle PWM_C;
+PWM_Handle BEMF_REF;
 
 /****************************************************************************************************************************************************
  *      FUNCTION DECLARATION
@@ -240,6 +241,9 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
             Mailbox_post(mbxDutyCycle, &dutyCycleRaw, BIOS_NO_WAIT);                // Send duty cycle to the motor
             Timer_stop(timerMotorControlOL);                                        // Stop OpenLoop control timer
 
+            // Todo: Remove
+            System_flush();
+
         } else {
 
             if(events & EVENT_MOTOR_TOGGLE_STATUS){
@@ -337,9 +341,10 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
     PWM_A = PWM_open(PHASE_A_HIN, &PWM_params);
     PWM_B = PWM_open(PHASE_B_HIN, &PWM_params);
     PWM_C = PWM_open(PHASE_C_HIN, &PWM_params);
+    BEMF_REF = PWM_open(BEMF_READ_REF, &PWM_params);
 
     // Check if PWM have been opened
-    if (PWM_A == NULL || PWM_B == NULL || PWM_C == NULL) {
+    if (PWM_A == NULL || PWM_B == NULL || PWM_C == NULL || BEMF_REF == NULL) {
         System_printf("No s'ha pogut agafar el driver per els PWM dels motors \n");
         System_flush();
         while (1);
@@ -355,6 +360,8 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
     /* Motor initialization */
     /* Stop and cut power to the motor */
     setPhase(0);                                                                // phase = 0, cuts power
+    PWM_setDuty(BEMF_REF, dutyCycle(50));                                       // Set BEMF Ref. duty at 50%
+    PWM_start(BEMF_REF);                                                        // Start the signal. It never can be stopped. ADC is triggered with this signal
 
     /* Speed measurement */
     uint32_t tstart, tstop = 0;                                                 // Timestamps store
@@ -379,7 +386,7 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
 
             /* Reset state */
             phase = tstart = tstop = i = dutyCycleRaw = 0;                          // Reset phase and speed calculating parameters
-        setPhase(phase);                                                            // Stop motor
+            setPhase(phase);                                                        // Stop motor
 
         } else if (events & EVENT_CHANGE_PHASE){
 

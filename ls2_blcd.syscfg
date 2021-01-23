@@ -21,10 +21,12 @@ const GPIO7   = GPIO.addInstance();
 const GPIO8   = GPIO.addInstance();
 const GPIO9   = GPIO.addInstance();
 const GPIO10  = GPIO.addInstance();
+const GPIO11  = GPIO.addInstance();
 const PWM     = scripting.addModule("/ti/drivers/PWM", {}, false);
 const PWM1    = PWM.addInstance();
 const PWM2    = PWM.addInstance();
 const PWM3    = PWM.addInstance();
+const PWM4    = PWM.addInstance();
 const Power   = scripting.addModule("/ti/drivers/Power");
 const RTOS    = scripting.addModule("/ti/drivers/RTOS");
 const SPI     = scripting.addModule("/ti/drivers/SPI", {}, false);
@@ -97,6 +99,10 @@ GPIO10.mode            = "Output";
 GPIO10.$name           = "MKII_LED_Green_GPIO";
 GPIO10.gpioPin.$assign = "boosterpack.38";
 
+GPIO11.$name           = "Zero_Cross_Check_GPIO";
+GPIO11.mode            = "Output";
+GPIO11.gpioPin.$assign = "expansion.10";
+
 PWM1.$name                = "PHASE_A_HIN";
 PWM1.timer.$assign        = "Timer_A1";
 PWM1.timer.pwmPin.$assign = "expansion.24";
@@ -108,6 +114,10 @@ PWM2.timer.pwmPin.$assign = "expansion.26";
 PWM3.$name                = "PHASE_C_HIN";
 PWM3.timer.$assign        = "Timer_A1";
 PWM3.timer.pwmPin.$assign = "expansion.25";
+
+PWM4.$name                = "BEMF_READ_REF";
+PWM4.timer.$assign        = "Timer_A1";
+PWM4.timer.pwmPin.$assign = "expansion.18";
 
 Power.performanceLevel3.$name = "ti_drivers_power_PowerMSP432PerfLevels0";
 Power.performanceLevel2.$name = "ti_drivers_power_PowerMSP432PerfLevels1";

@@ -65,6 +65,9 @@
 /* Board header files */
 #include <ti/drivers/Board.h>
 
+/* User libraries */
+#include "library/ADC/ADC.h"
+
 /****************************************************************************************************************************************************
  *      Main Function
  ****************************************************************************************************************************************************/
@@ -74,7 +77,14 @@ int main()
     Board_init();
     GPIO_init();
     PWM_init();
-    ADCBuf_init();
+    //ADCBuf_init();
+
+    bool error = true;
+    error = ADCinit();
+    if(!error){
+        System_printf("ADC initialization failed! \n");
+       System_flush();
+    }
 
     /* Enable interrupts */
     GPIO_enableInt(Board_BUTTON_S1_GPIO);
