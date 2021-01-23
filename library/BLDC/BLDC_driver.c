@@ -47,6 +47,7 @@
 
 /* User libraries */
 #include "../utilities/utilities.h"
+#include "../ADC/ADC.h"                                                     // Used for proper ADC configuration when motor phase changes
 
 
 /****************************************************************************************************************************************************
@@ -62,12 +63,14 @@
 #define EVENT_CHANGE_PHASE          Event_Id_01
 
 /* Speed calculation Events */
-#define EVENT_MBX_TIME              Event_Id_00
+#define EVENT_ELECTRIC_REVOLUTION   Event_Id_00
 #define EVENT_SPEED_0               Event_Id_01
 
 /* Speed calculations */
 #define STEPS_PER_LAP               43              // Motor steps per lap. Number of phase changes needed to complete a lap. Todo: Make sure 42 are the actual steps of the motor
-#define TIME_BUFF_LEN               32              // Time buffer lenght for speed calculation
+#define STEPS_PER_ELECTRIC_REV      6               // There's 6 phase changes in a complete electric revolution
+#define ELECTRIC_REV_PER_LAP        (STEPS_PER_LAP/STEPS_PER_ELECTRIC_REV)
+#define TIME_BUFF_LEN               32              // Number of time samples to average in order to calculate motor's speed
 #define TIME_AVG_SHIFT              5               // Shift factor for average calculation
 
 /* Motor status */
@@ -363,11 +366,6 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
     PWM_setDuty(BEMF_REF, dutyCycle(50));                                       // Set BEMF Ref. duty at 50%
     PWM_start(BEMF_REF);                                                        // Start the signal. It never can be stopped. ADC is triggered with this signal
 
-    /* Speed measurement */
-    uint32_t tstart, tstop = 0;                                                 // Timestamps store
-    uint32_t timeBuff[TIME_BUFF_LEN];                                           // Phase change times buffer
-    uint8_t i = 0;                                                              // Buffer index
-
     /* MAIN TASK LOOP */
     while(1){
 
@@ -385,8 +383,9 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
         if(events & EVENT_PHASE_STOP){
 
             /* Reset state */
-            phase = tstart = tstop = i = dutyCycleRaw = 0;                          // Reset phase and speed calculating parameters
+            phase = dutyCycleRaw = 0;                                               // Reset phase and speed calculating parameters
             setPhase(phase);                                                        // Stop motor
+            confAdcBemf(phase);                                                     // Stop reading BEMF
 
             /* BEMF Control Development*/
             GPIO_write(BEMF_PHC_GPIO, 0);                                           // Phase check LOW when motor is stopped
@@ -395,27 +394,21 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
 
             /* Phase change */
             phase++;
-            if(phase > 6){phase = 1;}
+            if(phase > 6){
 
-            /* Time between phase changes */
-            tstop = Timestamp_get32();
-            if(tstart){                                                             // If there's a previous phase
-                timeBuff[i] = tstop - tstart;                                       // Time between current phase and previous phase
-
-                i++;                                                                // Increment buffer index
-                i %= TIME_BUFF_LEN;                                                 // Keep index between 0 and TIME_BUFF_LEN
-
-                if(!i){                                                             // If buffer is full
-                    Mailbox_post(mbxPhaseChangeTime, timeBuff, BIOS_NO_WAIT);       // Then send it to speed calculator
-                }
+                /* Electric revolution completed */
+                phase = 1;                                                          // Reset phase
+                Event_post(eventSpeed, EVENT_ELECTRIC_REVOLUTION);                  // Motor speed calculation
             }
-            tstart = tstop;                                                         // Start counting for next phase
 
             /* Motor State */
             PWM_setDuty(PWM_A, dutyCycleRaw);
             PWM_setDuty(PWM_B, dutyCycleRaw);
             PWM_setDuty(PWM_C, dutyCycleRaw);
             setPhase(phase);
+
+            /* BEMF reading */
+            confAdcBemf(phase);                                                     // Configure ADC to read the proper phase
 
             /* BEMF Control Development*/
             GPIO_toggle(BEMF_PHC_GPIO);                                             // Phase check LOW when motor is stopped
@@ -424,6 +417,7 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
 
             /* Unknown event */
             setPhase(0);                                                                // Stop motor
+            confAdcBemf(0);                                                             // Stop reading BEMF
             System_printf("Unknown event on taskPhaseChange. Event: %d \n", events);    // Report error
             System_flush();
             while(1);                                                                   // Halts program. Todo: Change to System_abort
@@ -438,51 +432,60 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
     uint32_t events;
 
     /* Time buffer */
+    /* Speed measurement */
+    uint32_t tstart, tstop = 0;                                     // Timestamps store variables
     uint8_t i = 0;
-    uint32_t timeBuff[TIME_BUFF_LEN];
     uint32_t time;
 
     /* Speed conversion */
-    int32_t speed = 0;                                      // Motor speed
+    int32_t speed = 0;                                              // Motor speed
     Types_FreqHz freq;
-    Timestamp_getFreq(&freq);                               // Get timestamp module freq.
-    int32_t speedHumanize = 60 * freq.lo / STEPS_PER_LAP;   // Constant to convert from timestamp units to RMP
-                                                            // 60 is for converting sec. to min.
-                                                            // freq.lo is for converting timestamp counts to seconds
-                                                            // STEPS_PER_LAP are the steps (phase changes) to complete a lap in the motor
+    Timestamp_getFreq(&freq);                                       // Get timestamp module freq.
+    int32_t speedHumanize = 60 * freq.lo / ELECTRIC_REV_PER_LAP;    // Constant to convert from timestamp units to RMP
+                                                                    // 60 is for converting sec. to min.
+                                                                    // freq.lo is for converting timestamp counts to seconds
+                                                                    // ELECTRIC_REV_PER_LAP are the number of electric revolutions to complete a lap in the motor
 
     while(1){
 
-        events = Event_pend(eventSpeed, Event_Id_NONE, EVENT_SPEED_0 | EVENT_MBX_TIME, BIOS_WAIT_FOREVER);
+        events = Event_pend(eventSpeed, Event_Id_NONE, EVENT_SPEED_0 | EVENT_ELECTRIC_REVOLUTION, BIOS_WAIT_FOREVER);
 
         if(events & EVENT_SPEED_0){
 
             /* Send speed */
             speed = 0;                                                      // Motor has stoped
+            time = 0;                                                       // Reset time accumulator
             Mailbox_post(mbxTheoricalSpeed, &speed, BIOS_WAIT_FOREVER);     // Wait until speed can be printed
 
-        } else if(events & EVENT_MBX_TIME){
+        } else if(events & EVENT_ELECTRIC_REVOLUTION){
 
             /* Get time buffer from taskPhaseChange */
-            Mailbox_pend(mbxPhaseChangeTime, timeBuff, BIOS_NO_WAIT);
+            //Mailbox_pend(mbxPhaseChangeTime, timeBuff, BIOS_NO_WAIT);
 
-            /* Average calculation */
-            time = 0;                                                   // Reset accumulator
-            for(i = 0; i < TIME_BUFF_LEN; i++){                         // Sum all times in the buffer
-                time += timeBuff[i];
+            /* Get Timestamp */
+            tstop = Timestamp_get32();
+
+            /* Add measurement */
+            if(tstart){                                                             // If there's a previous electric revolution
+                time += tstop - tstart;                                             // Accumulate time between current electric revolution and the previous one
+
+                i++;                                                                // Increment buffer index
+                i %= TIME_BUFF_LEN;                                                 // Keep index between 0 and TIME_BUFF_LEN
+
+                if(!i){
+
+                    /* Buffer is full */
+                    time >>= TIME_AVG_SHIFT;                                        // Average calculation
+                    speed = speedHumanize / time;                                   // Convert into RPM
+                    Mailbox_post(mbxTheoricalSpeed, &speed, BIOS_NO_WAIT);          // Send data to LCD
+                    time = 0;                                                       // Reset time accumulator
+                }
             }
 
-            time >>= TIME_AVG_SHIFT;                                    // Divide by the number of sumands
+            /* Next measurement */
+            tstart = tstop;                                                         // Start counting for next phase
 
-            /* RPM conversion */
-            speed = speedHumanize / time;                               // Convert into RPM
-
-            /* Send speed */
-            Mailbox_post(mbxTheoricalSpeed, &speed, BIOS_NO_WAIT);      // Send data to LCD
         }
-
-        //System_printf("Motor speed (RPM): %d \n", speed);         // Don't flush so execution isn't iterrupted
-
     }
 }
 

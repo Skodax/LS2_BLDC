@@ -44,13 +44,10 @@
 /****************************************************************************************************************************************************
  *      MACROS
  ****************************************************************************************************************************************************/
-/*els segUents defines son per configurar els pins de l'ADC dins de la
- * funcio ADCinit().
- */
-#define PinConfigChannel(config) (((config) >> 10) & 0x1F)
-#define PinConfigModuleFunction(config) (((config) >> 8) & 0x3)
-#define PinConfigPort(config) (((config) >> 4) & 0xF)
-#define PinConfigPin(config) (1 << ((config) & 0x7))
+#define ADC_MEM_PHASE_A                             ADC_MEM0        // Memory where Phase A BEMF will be stored
+#define ADC_MEM_PHASE_B                             ADC_MEM1        // Memory where Phase B BEMF will be stored
+#define ADC_MEM_PHASE_C                             ADC_MEM2        // Memory where Phase C BEMF will be stored
+
 
 /* el seguent define es la mida del buffer de dades a la tasca productora.
  * Atencio: si s'augmenta molt, no s'ha d'oblidar ampliar la memoria de pila
@@ -197,61 +194,65 @@ bool ADCinit(void)
     if(!errorInit){return errorInit;} //check error
 
     MAP_ADC14_disableInterrupt(0xFFFFFFFFFFFFFFFF);  // deshabilitem totes les interrupcions
-    MAP_ADC14_enableInterrupt(ADC_HI_INT);           // habilitem la interrupcio que assenyala que
+//    MAP_ADC14_enableInterrupt(ADC_HI_INT);           // habilitem la interrupcio que assenyala que
                                                      // el valor de l'ADC esta per sobre del
-                                                     // valor alt de la finestra de comparacio
+                                                     // valor alt de la finestra de comparacio                                                      */
 
-    //configuracio de l'ADC0
-    errorInit = ADC14_configureSingleSampleMode(ADC_MEM0, true);
-    errorInit = MAP_ADC14_configureConversionMemory(ADC_MEM0,                     // mapejat a MEM0
-                                                    ADC_VREFPOS_AVCC_VREFNEG_VSS, // ref voltatge a 3.3V i -3.3V
-                                                    ADC_INPUT_A20,                // P8.5 (PHASE_A BEMF)
-                                                    ADC_DIFFERENTIAL_INPUTS);     // Diff amb P8.4 (ADC_INPUT_A21)
+    /* BEMF Phase A */
+    MAP_GPIO_setAsPeripheralModuleFunctionInputPin(
+                                                    GPIO_PORT_P8,
+                                                    GPIO_PIN5 | GPIO_PIN4,          // Set Pin 8.5 and 8.4
+                                                    GPIO_TERTIARY_MODULE_FUNCTION   // As an ADC input
+                                                    );
+
+    errorInit = MAP_ADC14_configureConversionMemory(
+                                                    ADC_MEM_PHASE_A,                // ADC conversion result memory address
+                                                    ADC_VREFPOS_AVCC_VREFNEG_VSS,   // Ref voltatge a 3.3V i -3.3V
+                                                    ADC_INPUT_A20,                  // P8.5 (PHASE_A BEMF)
+                                                    ADC_DIFFERENTIAL_INPUTS         // Diff amb P8.4 (ADC_INPUT_A21)
+                                                    );
+
+
+    /* BEMF Phase B */
+    MAP_GPIO_setAsPeripheralModuleFunctionInputPin(
+                                                    GPIO_PORT_P8,
+                                                    GPIO_PIN7 | GPIO_PIN6,          // Set Pin 8.7 and 8.6
+                                                    GPIO_TERTIARY_MODULE_FUNCTION   // As an ADC input
+                                                    );
+
+    errorInit = MAP_ADC14_configureConversionMemory(
+                                                    ADC_MEM_PHASE_B,                // ADC conversion result memory address
+                                                    ADC_VREFPOS_AVCC_VREFNEG_VSS,   // Ref voltatge a 3.3V i -3.3V
+                                                    ADC_INPUT_A18,                  // P8.7 (PHASE_A BEMF)
+                                                    ADC_DIFFERENTIAL_INPUTS         // Diff amb P8.6 (ADC_INPUT_A19)
+                                                    );
+
+    /* BEMF Phase C */
+    MAP_GPIO_setAsPeripheralModuleFunctionInputPin(
+                                                    GPIO_PORT_P9,
+                                                    GPIO_PIN1 | GPIO_PIN0,          // Set Pin 9.1 and 9.0
+                                                    GPIO_TERTIARY_MODULE_FUNCTION   // As an ADC input
+                                                    );
+
+    errorInit = MAP_ADC14_configureConversionMemory(
+                                                    ADC_MEM_PHASE_C,                // ADC conversion result memory address
+                                                    ADC_VREFPOS_AVCC_VREFNEG_VSS,   // Ref voltatge a 3.3V i -3.3V
+                                                    ADC_INPUT_A16,                  // P9.1 (PHASE_C BEMF)
+                                                    ADC_DIFFERENTIAL_INPUTS         // Diff amb P9.0 (ADC_INPUT_A17)
+                                                    );
+
+
     if(!errorInit){return errorInit;} //check error
 
+    /*
     // associem l'ADC0, mitjançant l'ADCMEM0, a la finestra de comparacio 0
     errorInit = MAP_ADC14_enableComparatorWindow(ADC_MEM0,          //associa la finestra de comparacio a MEM0
                                                  ADC_COMP_WINDOW0); //fem servir el comparador 0
     if(!errorInit){return errorInit;} //check error
-
-    /*
-    //configurem el GPIO 5.5 i 5.4 per a funcionalitat de l'ADC
-    MAP_GPIO_setAsPeripheralModuleFunctionInputPin(      // configuracio del P5.5
-        PinConfigPort(((0 << 10) | 0x0355)),
-        PinConfigPin(((0 << 10) | 0x0355)),
-        PinConfigModuleFunction(((0 << 10) | 0x0355)));
-
-
-    MAP_GPIO_setAsPeripheralModuleFunctionInputPin(      // configuracio del P5.4
-            PinConfigPort(((1 << 10) | 0x0354)),
-            PinConfigPin(((1 << 10) | 0x0354)),
-            PinConfigModuleFunction(((1 << 10) | 0x0354)));*/
-
-    MAP_GPIO_setAsPeripheralModuleFunctionInputPin(GPIO_PORT_P8, GPIO_PIN5 | GPIO_PIN4, GPIO_TERTIARY_MODULE_FUNCTION);
-
-    /*
-    //Configuracio ADC11 cap a ADCMEM1 i single ended
-    errorInit = MAP_ADC14_configureConversionMemory(ADC_MEM1,                     // registre 0
-                                                    ADC_VREFPOS_AVCC_VREFNEG_VSS, // ref a 3.3V
-                                                    ADC_INPUT_A11,                // P4.2
-                                                    false);                       // single-ended
-    if(!errorInit){return errorInit;} //check error
-
-    //configurem el GPIO 4.2 per a funcionalitat de l'ADC
-    MAP_GPIO_setAsPeripheralModuleFunctionInputPin(
-            PinConfigPort(((11 << 10) | 0x0342)),
-            PinConfigPin(((11 << 10) | 0x0342)),
-            PinConfigModuleFunction(((11 << 10) | 0x0342)));
-
-    // Mode de multisequencia: a cada trigger, es fa la conversio des del MEM0 fins al MEM1 en mode de repeticio
-    errorInit = MAP_ADC14_configureMultiSequenceMode(ADC_MEM0, ADC_MEM1, true);
-    if(!errorInit){return errorInit;} //check error
     */
 
-    // les operacions de configuracio s'han acabat
-
     // neteja de flags d'interrupcio
-    ADC14_clearInterruptFlag (ADC_INT0 | ADC_INT1 | ADC_HI_INT | ADC_LO_INT | ADC_IN_INT);//netejar flag
+    MAP_ADC14_clearInterruptFlag (ADC_INT0 | ADC_INT1 | ADC_HI_INT | ADC_LO_INT | ADC_IN_INT);//netejar flag
     // A partir d'aqui, s'ha d'iniciar la conversio; pero no la inciem fins que, a dins de la tasca
     // productora, s'hagi configurat i engegat el TA1_1
 
@@ -270,3 +271,101 @@ bool ADCinit(void)
     return errorInit;
 }
 
+/****************************************************************************************************************************************************
+ *      FUNCTIONS
+ ****************************************************************************************************************************************************/
+void confAdcBemf(uint8_t phase){
+
+    /* Configure the ADC module depending on the current phase.
+     * Set the comparison window to the current BEMF phase. */
+
+    /* Prepare ADC for configuration */
+    MAP_ADC14_disableConversion();                                                      // To configure the ADC needs to be disabled
+
+    /* Phase configuration */
+    switch (phase) {
+        case 1:
+
+            MAP_ADC14_enableComparatorWindow(ADC_MEM_PHASE_C, ADC_COMP_WINDOW0);        // Phase C has the BEMF signal
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_A);                         // Disable other phases comparison window
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_B);                         // Disable other phases comparison window
+
+            MAP_ADC14_enableInterrupt(ADC_LO_INT);                                      // Interrupt when BEMF crosses 0 from above
+            MAP_ADC14_disableInterrupt(ADC_HI_INT);                                     // Disable window upper site interrupt
+
+            MAP_ADC14_configureSingleSampleMode(ADC_MEM_PHASE_C, true);                 // Convert only this phase signal
+            break;
+
+        case 2:
+
+            MAP_ADC14_enableComparatorWindow(ADC_MEM_PHASE_B, ADC_COMP_WINDOW0);        // Phase B has the BEMF signal
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_A);                         // Disable other phases comparison window
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_C);                         // Disable other phases comparison window
+
+            MAP_ADC14_enableInterrupt(ADC_HI_INT);                                      // Interrupt when BEMF crosses 0 from below
+            MAP_ADC14_disableInterrupt(ADC_LO_INT);                                     // Disable window lower site interrupt
+
+            MAP_ADC14_configureSingleSampleMode(ADC_MEM_PHASE_B, true);                 // Convert only this phase signal
+            break;
+
+        case 3:
+
+            MAP_ADC14_enableComparatorWindow(ADC_MEM_PHASE_A, ADC_COMP_WINDOW0);        // Phase A has the BEMF signal
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_B);                         // Disable other phases comparison window
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_C);                         // Disable other phases comparison window
+
+            MAP_ADC14_enableInterrupt(ADC_LO_INT);                                      // Interrupt when BEMF crosses 0 from above
+            MAP_ADC14_disableInterrupt(ADC_HI_INT);                                     // Disable window upper site interrupt
+
+            MAP_ADC14_configureSingleSampleMode(ADC_MEM_PHASE_A, true);                 // Convert only this phase signal
+            break;
+
+        case 4:
+
+            MAP_ADC14_enableComparatorWindow(ADC_MEM_PHASE_C, ADC_COMP_WINDOW0);        // Phase C has the BEMF signal
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_A);                         // Disable other phases comparison window
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_B);                         // Disable other phases comparison window
+
+            MAP_ADC14_enableInterrupt(ADC_HI_INT);                                      // Interrupt when BEMF crosses 0 from below
+            MAP_ADC14_disableInterrupt(ADC_LO_INT);                                     // Disable window lower site interrupt
+
+            MAP_ADC14_configureSingleSampleMode(ADC_MEM_PHASE_C, true);                 // Convert only this phase signal
+            break;
+
+        case 5:
+
+            MAP_ADC14_enableComparatorWindow(ADC_MEM_PHASE_B, ADC_COMP_WINDOW0);        // Phase B has the BEMF signal
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_A);                         // Disable other phases comparison window
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_C);                         // Disable other phases comparison window
+
+            MAP_ADC14_enableInterrupt(ADC_LO_INT);                                      // Interrupt when BEMF crosses 0 from above
+            MAP_ADC14_disableInterrupt(ADC_HI_INT);                                     // Disable window upper site interrupt
+
+            MAP_ADC14_configureSingleSampleMode(ADC_MEM_PHASE_B, true);                 // Convert only this phase signal
+            break;
+
+        case 6:
+
+            MAP_ADC14_enableComparatorWindow(ADC_MEM_PHASE_A, ADC_COMP_WINDOW0);        // Phase  has the BEMF signal
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_B);                         // Disable other phases comparison window
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_C);                         // Disable other phases comparison window
+
+            MAP_ADC14_enableInterrupt(ADC_HI_INT);                                      // Interrupt when BEMF crosses 0 from below
+            MAP_ADC14_disableInterrupt(ADC_LO_INT);                                     // Disable window lower site interrupt
+
+            MAP_ADC14_configureSingleSampleMode(ADC_MEM_PHASE_A, true);                 // Convert only this phase signal
+            break;
+
+        default:
+
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_A);                         // Disable comparison window on the phase signal
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_B);                         // Disable comparison window on the phase signal
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_C);                         // Disable comparison window on the phase signal
+            MAP_ADC14_disableInterrupt(ADC_HI_INT | ADC_LO_INT);                        // On motor stop the comparison window is disabled
+            break;
+    }
+
+    /* Prepare ADC for reading */
+    MAP_ADC14_clearInterruptFlag(ADC_HI_INT | ADC_LO_INT);                              // Clear compare window interrupt flags
+    MAP_ADC14_enableConversion();                                                       // Enable ADC conversion (triggered by Timer A1)
+}

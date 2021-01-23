@@ -10,6 +10,8 @@
 
 #include "ti_drivers_config.h"
 #include <ti/devices/msp432p4xx/driverlib/driverlib.h>
+
 bool ADCinit(void);
+void confAdcBemf(uint8_t phase);
 
 #endif /* LIBRARY_ADC_ADC_H_ */
