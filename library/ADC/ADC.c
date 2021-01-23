@@ -111,7 +111,7 @@ void hwiADCFx(UArg arg){
                                               // esta per SOTA del valor de finestra de comparacio,
         MAP_ADC14_disableInterrupt(ADC_LO_INT);   // DESHABILITEM la INT de 'valor per sota' i
         MAP_ADC14_enableInterrupt(ADC_HI_INT);    // HABILITEM la INT de 'valor per sobre'.
-        GPIO_write(Zero_Cross_Check_GPIO, 0);
+        GPIO_write(BEMF_ZCD_GPIO, 0);
         //GPIO_toggle(Zero_Cross_Check_GPIO);             // Assenyalem el pas pel valor baix en flanc de baixada
         // aquest conjunt d'intruccions anteriors es un trigger per flanc de baixada
    }
@@ -120,7 +120,7 @@ void hwiADCFx(UArg arg){
         MAP_ADC14_disableInterrupt(ADC_HI_INT);   // DESHABILITEM la INT de 'valor per sobre' i
         MAP_ADC14_enableInterrupt(ADC_LO_INT);    // HABILITEM la INT de 'valor per sota'.
         //GPIO_toggle(Zero_Cross_Check_GPIO);             // Assenyalem el pas pel valor baix en flanc de pujada
-        GPIO_write(Zero_Cross_Check_GPIO, 1);
+        GPIO_write(BEMF_ZCD_GPIO, 1);
         // aquest conjunt d'intruccions anteriors es un trigger per flanc de pujada
 
     }

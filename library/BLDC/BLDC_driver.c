@@ -388,6 +388,9 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
             phase = tstart = tstop = i = dutyCycleRaw = 0;                          // Reset phase and speed calculating parameters
             setPhase(phase);                                                        // Stop motor
 
+            /* BEMF Control Development*/
+            GPIO_write(BEMF_PHC_GPIO, 0);                                           // Phase check LOW when motor is stopped
+
         } else if (events & EVENT_CHANGE_PHASE){
 
             /* Phase change */
@@ -413,6 +416,9 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
             PWM_setDuty(PWM_B, dutyCycleRaw);
             PWM_setDuty(PWM_C, dutyCycleRaw);
             setPhase(phase);
+
+            /* BEMF Control Development*/
+            GPIO_toggle(BEMF_PHC_GPIO);                                             // Phase check LOW when motor is stopped
 
         } else {
 

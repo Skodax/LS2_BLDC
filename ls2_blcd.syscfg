@@ -22,6 +22,7 @@ const GPIO8   = GPIO.addInstance();
 const GPIO9   = GPIO.addInstance();
 const GPIO10  = GPIO.addInstance();
 const GPIO11  = GPIO.addInstance();
+const GPIO16  = GPIO.addInstance();
 const PWM     = scripting.addModule("/ti/drivers/PWM", {}, false);
 const PWM1    = PWM.addInstance();
 const PWM2    = PWM.addInstance();
@@ -99,9 +100,13 @@ GPIO10.mode            = "Output";
 GPIO10.$name           = "MKII_LED_Green_GPIO";
 GPIO10.gpioPin.$assign = "boosterpack.38";
 
-GPIO11.$name           = "Zero_Cross_Check_GPIO";
 GPIO11.mode            = "Output";
-GPIO11.gpioPin.$assign = "expansion.10";
+GPIO11.$name           = "BEMF_ZCD_GPIO";
+GPIO11.gpioPin.$assign = "expansion.12";
+
+GPIO16.$name           = "BEMF_PHC_GPIO";
+GPIO16.mode            = "Output";
+GPIO16.gpioPin.$assign = "expansion.10";
 
 PWM1.$name                = "PHASE_A_HIN";
 PWM1.timer.$assign        = "Timer_A1";
