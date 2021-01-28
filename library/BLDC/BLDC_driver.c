@@ -40,7 +40,8 @@
 #include <ti/drivers/PWM.h>
 
 /* Driverib */
-#include <ti/devices/msp432p4xx/driverlib/gpio.h>                           // Used for retrieving IFG from the ports
+#include <ti/devices/msp432p4xx/driverlib/driverlib.h>
+//#include <ti/devices/msp432p4xx/driverlib/gpio.h>                           // Used for retrieving IFG from the ports
 
 /* Board header files */
 #include <ti/drivers/Board.h>
@@ -259,8 +260,12 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                 if(motorEnabeled){
                     speed = 0;
                     Timer_start(timerMotorAcc);
+
                 } else {
                     Timer_stop(timerMotorAcc);
+
+                    // Todo: Remove -> Debug
+                    MAP_ADC14_disableConversion();
                 }
 
                 if(!motorEnabeled){
@@ -283,6 +288,12 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                     if(speed > MOTOR_OL_MAX_SPEED){
                         speed = MOTOR_OL_MAX_SPEED;
                         Timer_stop(timerMotorAcc);
+
+                        // Todo: Remove -> Debug
+                        // Start sensing bemf
+                        ADC14_configureMultiSequenceMode(ADC_MEM0, ADC_MEM2, true);
+                        //MAP_ADC14_configureSingleSampleMode(ADC_MEM0, true);
+                        MAP_ADC14_enableConversion();
                     }
 
 
@@ -336,7 +347,7 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
     PWM_Params_init(&PWM_params);
     PWM_params.idleLevel = PWM_IDLE_LOW;         // Output low when PWM is not running
     PWM_params.periodUnits = PWM_PERIOD_US;      // Period is in us
-    PWM_params.periodValue = 50;                // 100us -> 10KHz
+    PWM_params.periodValue = 30;                // 100us -> 10KHz
     PWM_params.dutyUnits = PWM_DUTY_FRACTION;    // Duty is in fractional percentage
     PWM_params.dutyValue = 0;                    // 0% initial duty cycle
 

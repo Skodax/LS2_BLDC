@@ -102,9 +102,11 @@ volatile uint_fast64_t enableInts; // interrupcions habilitades de l'ADC en 'aqu
 volatile uint_fast64_t actualInts; // valor actual del registre de INTs de l'ADC
 
 /* Debug */
-#define PHASE_A_BUFF_LEN        460
+#define PHASE_A_BUFF_LEN        200
 uint16_t i, current_phase = 0;
 int16_t PhaseA_buff[PHASE_A_BUFF_LEN];
+int16_t PhaseB_buff[PHASE_A_BUFF_LEN];
+int16_t PhaseC_buff[PHASE_A_BUFF_LEN];
 uint32_t PhaseA_time[PHASE_A_BUFF_LEN];
 
 /****************************************************************************************************************************************************
@@ -142,7 +144,7 @@ void hwiADCFx(UArg arg){
      * habilitades i deshabilitades.
      */
     MAP_ADC14_clearInterruptFlag(
-            ADC_IN_INT | ADC_LO_INT | ADC_HI_INT | ADC_INT0 | ADC_INT1); // neteja flags
+            ADC_IN_INT | ADC_LO_INT | ADC_HI_INT | ADC_INT0 | ADC_INT1 | ADC_INT2 | ADC_INT1); // neteja flags
     //Semaphore_post(startConversion); // assemyalem al productor la disponibilitat de les dades ADC
 }
 
@@ -159,6 +161,8 @@ void taskADCFx(UArg arg0, UArg arg1){
 
     for(i = 0; i < PHASE_A_BUFF_LEN; i++){
         PhaseA_buff[i] = 0;
+        PhaseB_buff[i] = 0;
+        PhaseC_buff[i] = 0;
         PhaseA_time[i] = 0;
     }
 
@@ -168,10 +172,11 @@ void taskADCFx(UArg arg0, UArg arg1){
         Semaphore_pend(semADCSample, BIOS_WAIT_FOREVER);
 
         PhaseA_buff[i] = (int_fast16_t) ADC14_getResult(ADC_MEM_PHASE_A);
+        PhaseB_buff[i] = (int_fast16_t) ADC14_getResult(ADC_MEM_PHASE_B);
+        PhaseC_buff[i] = (int_fast16_t) ADC14_getResult(ADC_MEM_PHASE_C);
         PhaseA_time[i] = Timestamp_get32();
         i++;
-//        PhaseA_buff[i] = 0;
-//        PhaseA_time[i] = 0;
+
 
         if(i >= PHASE_A_BUFF_LEN){i = 0;}
 
