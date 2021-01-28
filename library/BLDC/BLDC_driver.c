@@ -336,7 +336,7 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
     PWM_Params_init(&PWM_params);
     PWM_params.idleLevel = PWM_IDLE_LOW;         // Output low when PWM is not running
     PWM_params.periodUnits = PWM_PERIOD_US;      // Period is in us
-    PWM_params.periodValue = 100;                // 100us -> 10KHz
+    PWM_params.periodValue = 50;                // 100us -> 10KHz
     PWM_params.dutyUnits = PWM_DUTY_FRACTION;    // Duty is in fractional percentage
     PWM_params.dutyValue = 0;                    // 0% initial duty cycle
 

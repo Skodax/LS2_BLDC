@@ -61,11 +61,14 @@
 extern Swi_Handle swiADCResults;
 
 extern Task_Handle taskADC;                 // la tasca productora de l'ADC
+extern Semaphore_Handle semADCSample;
+
 extern Task_Handle taskPlot;                // la tasca consumidora d'enviar dades a consola
 extern Semaphore_Handle consumerStop;       // senyal per d'espera per enviar dades a consola
 extern Semaphore_Handle producerStop;       // senyal per parar la producció de dades
 extern Semaphore_Handle startConversion;    // senyal per fer la prendre dada de l'ADC1
        Queue_Handle     myQueue;            // gestor de la cua associada al buffer
+
 
 /****************************************************************************************************************************************************
  *      FUNCTION DECLARATION
@@ -74,7 +77,9 @@ extern Semaphore_Handle startConversion;    // senyal per fer la prendre dada de
 void swiADCResultsFx(UArg arg0, UArg arg1);
 
 void hwiADCFx(UArg arg);                    // funcio HWI associada a l'ADC i trigger-Schmidt
-void ADC_task_fxn(UArg arg0, UArg arg1);    // tasca productora
+
+void taskADCFx(UArg arg0, UArg arg1);    // tasca productora
+
 void plot_task_fxn(UArg arg0, UArg arg1);   // tasca consumidora:enviament a consola
 void my_idle_fxn(void);                     // res a fer
 bool ADCinit(void);                         // configuracio driverlib ADC
@@ -96,6 +101,12 @@ typedef struct{
 volatile uint_fast64_t enableInts; // interrupcions habilitades de l'ADC en 'aquest moment'
 volatile uint_fast64_t actualInts; // valor actual del registre de INTs de l'ADC
 
+/* Debug */
+#define PHASE_A_BUFF_LEN        80
+uint8_t up_i, down_i, current_phase = 0;
+int16_t PhaseA_up[PHASE_A_BUFF_LEN];
+int16_t PhaseA_down[PHASE_A_BUFF_LEN];
+
 /****************************************************************************************************************************************************
  *      HWI
  ****************************************************************************************************************************************************/
@@ -107,7 +118,7 @@ void hwiADCFx(UArg arg){
     if(enableInts & actualInts & ADC_LO_INT){ // si s'ha disparat la INT de que el senyal d'entrada
                                               // esta per SOTA del valor de finestra de comparacio,
         MAP_ADC14_disableInterrupt(ADC_LO_INT);   // DESHABILITEM la INT de 'valor per sota' i
-        MAP_ADC14_enableInterrupt(ADC_HI_INT);    // HABILITEM la INT de 'valor per sobre'.
+        //MAP_ADC14_enableInterrupt(ADC_HI_INT);    // HABILITEM la INT de 'valor per sobre'.
         GPIO_write(BEMF_ZCD_GPIO, 0);
         //GPIO_toggle(Zero_Cross_Check_GPIO);             // Assenyalem el pas pel valor baix en flanc de baixada
         // aquest conjunt d'intruccions anteriors es un trigger per flanc de baixada
@@ -115,7 +126,7 @@ void hwiADCFx(UArg arg){
     if(enableInts & actualInts & ADC_HI_INT){ // si s'ha disparat la INT de que el senyal d'entrada
                                               // esta per SOBRE del valor de finestra de comparacio,
         MAP_ADC14_disableInterrupt(ADC_HI_INT);   // DESHABILITEM la INT de 'valor per sobre' i
-        MAP_ADC14_enableInterrupt(ADC_LO_INT);    // HABILITEM la INT de 'valor per sota'.
+        //MAP_ADC14_enableInterrupt(ADC_LO_INT);    // HABILITEM la INT de 'valor per sota'.
         //GPIO_toggle(Zero_Cross_Check_GPIO);             // Assenyalem el pas pel valor baix en flanc de pujada
         GPIO_write(BEMF_ZCD_GPIO, 1);
         // aquest conjunt d'intruccions anteriors es un trigger per flanc de pujada
@@ -123,7 +134,8 @@ void hwiADCFx(UArg arg){
     }
 
     if(enableInts & actualInts & ADC_INT0){
-        Swi_post(swiADCResults);
+        Semaphore_post(semADCSample);
+        //Swi_post(swiADCResults);
     }
 
     /* NOTA sobre el trigger Schmidt: hem programat un cicle d'histeresi sobre les INT que estan
@@ -137,6 +149,41 @@ void hwiADCFx(UArg arg){
 void swiADCResultsFx(UArg arg0, UArg arg1){
     int16_t result = (int_fast16_t) ADC14_getResult(ADC_MEM0);
     System_printf("%8d\n", result);
+}
+
+/****************************************************************************************************************************************************
+ *      TASK
+ ****************************************************************************************************************************************************/
+
+void taskADCFx(UArg arg0, UArg arg1){
+
+
+    for(up_i = 0; up_i < PHASE_A_BUFF_LEN; up_i++){
+        PhaseA_up[up_i] = 0;
+        PhaseA_down[up_i] = 0;
+    }
+
+    up_i = 0;
+
+    while(1){
+        Semaphore_pend(semADCSample, BIOS_WAIT_FOREVER);
+
+        if(current_phase == 6){
+            PhaseA_up[up_i] = (int_fast16_t) ADC14_getResult(ADC_MEM_PHASE_A);
+            up_i++;
+
+            if(up_i >= PHASE_A_BUFF_LEN){up_i = 0;}
+        }
+
+        if(current_phase == 3){
+            PhaseA_down[down_i] = (int_fast16_t) ADC14_getResult(ADC_MEM_PHASE_A);
+            down_i++;
+
+            if(down_i >= PHASE_A_BUFF_LEN){down_i = 0;}
+        }
+
+    }
+
 }
 
 /****************************************************************************************************************************************************
@@ -197,6 +244,9 @@ bool ADCinit(void)
 //    MAP_ADC14_enableInterrupt(ADC_HI_INT);           // habilitem la interrupcio que assenyala que
                                                      // el valor de l'ADC esta per sobre del
                                                      // valor alt de la finestra de comparacio                                                      */
+
+    /* Debug */
+    ADC14_enableInterrupt(ADC_INT0);
 
     /* BEMF Phase A */
     MAP_GPIO_setAsPeripheralModuleFunctionInputPin(
@@ -276,6 +326,9 @@ bool ADCinit(void)
  ****************************************************************************************************************************************************/
 void confAdcBemf(uint8_t phase){
 
+    /* Debug */
+    current_phase = phase;
+
     /* Configure the ADC module depending on the current phase.
      * Set the comparison window to the current BEMF phase. */
 
@@ -309,6 +362,12 @@ void confAdcBemf(uint8_t phase){
             break;
 
         case 3:
+
+            /* Debug */
+            for(down_i = 0; down_i < PHASE_A_BUFF_LEN; down_i++){
+                PhaseA_down[down_i] = 0;
+            }
+            down_i = 0;
 
             MAP_ADC14_enableComparatorWindow(ADC_MEM_PHASE_A, ADC_COMP_WINDOW0);        // Phase A has the BEMF signal
             MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_B);                         // Disable other phases comparison window
@@ -346,6 +405,12 @@ void confAdcBemf(uint8_t phase){
 
         case 6:
 
+            /* Debug */
+            for(up_i = 0; up_i < PHASE_A_BUFF_LEN; up_i++){
+                PhaseA_down[up_i] = 0;
+            }
+            up_i = 0;
+
             MAP_ADC14_enableComparatorWindow(ADC_MEM_PHASE_A, ADC_COMP_WINDOW0);        // Phase  has the BEMF signal
             MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_B);                         // Disable other phases comparison window
             MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_C);                         // Disable other phases comparison window
@@ -368,4 +433,6 @@ void confAdcBemf(uint8_t phase){
     /* Prepare ADC for reading */
     MAP_ADC14_clearInterruptFlag(ADC_HI_INT | ADC_LO_INT);                              // Clear compare window interrupt flags
     MAP_ADC14_enableConversion();                                                       // Enable ADC conversion (triggered by Timer A1)
+
+
 }
