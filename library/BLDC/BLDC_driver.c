@@ -194,7 +194,6 @@ void timerMotorAccFx(UArg arg){
 void swiMotorStopFx(UArg arg1, UArg arg2){
 
     /* Trigger Motor stop Events */
-    Event_post(eventPhaseChange, EVENT_PHASE_STOP);             // Cut power to the motor
     Event_post(eventMotorControl, EVENT_MOTOR_STOP);            // Motor control at stop mode
 }
 
@@ -245,6 +244,8 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
             Mailbox_post(mbxDutyCycle, &dutyCycleRaw, BIOS_NO_WAIT);                // Send duty cycle to the motor
             Timer_stop(timerMotorControlOL);                                        // Stop OpenLoop control timer
 
+            Event_post(eventPhaseChange, EVENT_PHASE_STOP);             // Cut power to the motor
+
             // Todo: Remove
             System_flush();
 
@@ -265,7 +266,7 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                     Timer_stop(timerMotorAcc);
 
                     // Todo: Remove -> Debug
-                    MAP_ADC14_disableConversion();
+//                    MAP_ADC14_disableConversion();
                 }
 
                 if(!motorEnabeled){
@@ -291,9 +292,9 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
 
                         // Todo: Remove -> Debug
                         // Start sensing bemf
-                        ADC14_configureMultiSequenceMode(ADC_MEM0, ADC_MEM2, true);
+
                         //MAP_ADC14_configureSingleSampleMode(ADC_MEM0, true);
-                        MAP_ADC14_enableConversion();
+//                        MAP_ADC14_enableConversion();
                     }
 
 

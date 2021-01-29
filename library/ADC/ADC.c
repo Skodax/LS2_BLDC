@@ -25,6 +25,7 @@
 #include <ti/sysbios/knl/Swi.h>
 #include <ti/sysbios/knl/Task.h>
 #include <ti/sysbios/knl/Semaphore.h>
+#include <ti/sysbios/knl/Event.h>
 #include <ti/sysbios/knl/Queue.h>
 
 /* Drivers header files */
@@ -109,6 +110,18 @@ int16_t PhaseB_buff[PHASE_A_BUFF_LEN];
 int16_t PhaseC_buff[PHASE_A_BUFF_LEN];
 uint32_t PhaseA_time[PHASE_A_BUFF_LEN];
 
+#define ZERO_CROSS_BUFF_LEN     50
+#define ZERO_CROSS_UP           200
+#define ZERO_CROSS_DOWN         -200
+uint16_t j = 0;
+int16_t ZeroCross_buff[ZERO_CROSS_BUFF_LEN];
+uint32_t ZeroCross_time[ZERO_CROSS_BUFF_LEN];
+
+extern Event_Handle eventADC;
+#define EVENT_PHASE             Event_Id_00
+#define EVENT_ZERO_CROSS_UP     Event_Id_01
+#define EVENT_ZERO_CROSS_DOWN   Event_Id_02
+
 /****************************************************************************************************************************************************
  *      HWI
  ****************************************************************************************************************************************************/
@@ -124,6 +137,10 @@ void hwiADCFx(UArg arg){
         GPIO_write(BEMF_ZCD_GPIO, 0);
         //GPIO_toggle(Zero_Cross_Check_GPIO);             // Assenyalem el pas pel valor baix en flanc de baixada
         // aquest conjunt d'intruccions anteriors es un trigger per flanc de baixada
+
+        /* Debug */
+        Event_post(eventADC, EVENT_ZERO_CROSS_DOWN);
+
    }
     if(enableInts & actualInts & ADC_HI_INT){ // si s'ha disparat la INT de que el senyal d'entrada
                                               // esta per SOBRE del valor de finestra de comparacio,
@@ -133,10 +150,14 @@ void hwiADCFx(UArg arg){
         GPIO_write(BEMF_ZCD_GPIO, 1);
         // aquest conjunt d'intruccions anteriors es un trigger per flanc de pujada
 
+        /* Debug */
+        Event_post(eventADC, EVENT_ZERO_CROSS_UP);
+
     }
 
     if(enableInts & actualInts & ADC_INT0){
-        Semaphore_post(semADCSample);
+        Event_post(eventADC, EVENT_PHASE);
+//        Semaphore_post(semADCSample);
         //Swi_post(swiADCResults);
     }
 
@@ -168,17 +189,43 @@ void taskADCFx(UArg arg0, UArg arg1){
 
     i = 0;
 
+    for(j = 0; j < ZERO_CROSS_BUFF_LEN; j++){
+        ZeroCross_buff[j] = 0;
+        ZeroCross_time[j] = 0;
+    }
+
+    j = 0;
+
+    uint32_t events = 0;
+
     while(1){
-        Semaphore_pend(semADCSample, BIOS_WAIT_FOREVER);
 
-        PhaseA_buff[i] = (int_fast16_t) ADC14_getResult(ADC_MEM_PHASE_A);
-        PhaseB_buff[i] = (int_fast16_t) ADC14_getResult(ADC_MEM_PHASE_B);
-        PhaseC_buff[i] = (int_fast16_t) ADC14_getResult(ADC_MEM_PHASE_C);
-        PhaseA_time[i] = Timestamp_get32();
-        i++;
+        events = Event_pend(eventADC, Event_Id_NONE, EVENT_PHASE | EVENT_ZERO_CROSS_DOWN | EVENT_ZERO_CROSS_UP, BIOS_WAIT_FOREVER);
+        //Semaphore_pend(semADCSample, BIOS_WAIT_FOREVER);
 
+        if(events & EVENT_PHASE){
 
-        if(i >= PHASE_A_BUFF_LEN){i = 0;}
+            PhaseA_buff[i] = (int_fast16_t) ADC14_getResult(ADC_MEM_PHASE_A);
+            PhaseB_buff[i] = (int_fast16_t) ADC14_getResult(ADC_MEM_PHASE_B);
+            PhaseC_buff[i] = (int_fast16_t) ADC14_getResult(ADC_MEM_PHASE_C);
+            PhaseA_time[i] = Timestamp_get32();
+            i++;
+            if(i >= PHASE_A_BUFF_LEN){i = 0;}
+        }
+
+        if(events & EVENT_ZERO_CROSS_DOWN){
+            ZeroCross_buff[j] = ZERO_CROSS_DOWN;
+            ZeroCross_time[j] = Timestamp_get32();
+            j++;
+            if(j >= ZERO_CROSS_BUFF_LEN){j = 0;}
+        }
+
+        if(events & EVENT_ZERO_CROSS_UP){
+            ZeroCross_buff[j] = ZERO_CROSS_UP;
+            ZeroCross_time[j] = Timestamp_get32();
+            j++;
+            if(j >= ZERO_CROSS_BUFF_LEN){j = 0;}
+        }
 
     }
 
@@ -243,8 +290,7 @@ bool ADCinit(void)
                                                      // el valor de l'ADC esta per sobre del
                                                      // valor alt de la finestra de comparacio                                                      */
 
-    /* Debug */
-    ADC14_enableInterrupt(ADC_INT0);
+
 
     /* BEMF Phase A */
     MAP_GPIO_setAsPeripheralModuleFunctionInputPin(
@@ -328,96 +374,101 @@ void confAdcBemf(uint8_t phase){
     /* Configure the ADC module depending on the current phase.
      * Set the comparison window to the current BEMF phase. */
 
-//    /* Prepare ADC for configuration */
-//    MAP_ADC14_disableConversion();                                                      // To configure the ADC needs to be disabled
-//
-//    /* Phase configuration */
-//    switch (phase) {
-//        case 1:
+    /* Prepare ADC for configuration */
+    MAP_ADC14_disableConversion();                                                      // To configure the ADC needs to be disabled
 
+    /* Phase configuration */
+    switch (phase) {
+        case 1:
 
-//            MAP_ADC14_enableComparatorWindow(ADC_MEM_PHASE_C, ADC_COMP_WINDOW0);        // Phase C has the BEMF signal
-//            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_A);                         // Disable other phases comparison window
-//            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_B);                         // Disable other phases comparison window
-//
-//            MAP_ADC14_enableInterrupt(ADC_LO_INT);                                      // Interrupt when BEMF crosses 0 from above
-//            MAP_ADC14_disableInterrupt(ADC_HI_INT);                                     // Disable window upper site interrupt
-//
+            MAP_ADC14_enableComparatorWindow(ADC_MEM_PHASE_C, ADC_COMP_WINDOW0);        // Phase C has the BEMF signal
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_A);                         // Disable other phases comparison window
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_B);                         // Disable other phases comparison window
+
+            MAP_ADC14_enableInterrupt(ADC_LO_INT);                                      // Interrupt when BEMF crosses 0 from above
+            MAP_ADC14_disableInterrupt(ADC_HI_INT);                                     // Disable window upper site interrupt
+
 //            MAP_ADC14_configureSingleSampleMode(ADC_MEM_PHASE_C, true);                 // Convert only this phase signal
-//            break;
-//
-//        case 2:
-//
-//            MAP_ADC14_enableComparatorWindow(ADC_MEM_PHASE_B, ADC_COMP_WINDOW0);        // Phase B has the BEMF signal
-//            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_A);                         // Disable other phases comparison window
-//            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_C);                         // Disable other phases comparison window
-//
-//            MAP_ADC14_enableInterrupt(ADC_HI_INT);                                      // Interrupt when BEMF crosses 0 from below
-//            MAP_ADC14_disableInterrupt(ADC_LO_INT);                                     // Disable window lower site interrupt
-//
-//            MAP_ADC14_configureSingleSampleMode(ADC_MEM_PHASE_B, true);                 // Convert only this phase signal
-//            break;
-//
-//        case 3:
-//
-//            MAP_ADC14_enableComparatorWindow(ADC_MEM_PHASE_A, ADC_COMP_WINDOW0);        // Phase A has the BEMF signal
-//            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_B);                         // Disable other phases comparison window
-//            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_C);                         // Disable other phases comparison window
-//
-//            MAP_ADC14_enableInterrupt(ADC_LO_INT);                                      // Interrupt when BEMF crosses 0 from above
-//            MAP_ADC14_disableInterrupt(ADC_HI_INT);                                     // Disable window upper site interrupt
-//
-//            MAP_ADC14_configureSingleSampleMode(ADC_MEM_PHASE_A, true);                 // Convert only this phase signal
-//            break;
-//
-//        case 4:
-//
-//            MAP_ADC14_enableComparatorWindow(ADC_MEM_PHASE_C, ADC_COMP_WINDOW0);        // Phase C has the BEMF signal
-//            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_A);                         // Disable other phases comparison window
-//            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_B);                         // Disable other phases comparison window
-//
-//            MAP_ADC14_enableInterrupt(ADC_HI_INT);                                      // Interrupt when BEMF crosses 0 from below
-//            MAP_ADC14_disableInterrupt(ADC_LO_INT);                                     // Disable window lower site interrupt
-//
-//            MAP_ADC14_configureSingleSampleMode(ADC_MEM_PHASE_C, true);                 // Convert only this phase signal
-//            break;
-//
-//        case 5:
-//
-//            MAP_ADC14_enableComparatorWindow(ADC_MEM_PHASE_B, ADC_COMP_WINDOW0);        // Phase B has the BEMF signal
-//            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_A);                         // Disable other phases comparison window
-//            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_C);                         // Disable other phases comparison window
-//
-//            MAP_ADC14_enableInterrupt(ADC_LO_INT);                                      // Interrupt when BEMF crosses 0 from above
-//            MAP_ADC14_disableInterrupt(ADC_HI_INT);                                     // Disable window upper site interrupt
-//
-//            MAP_ADC14_configureSingleSampleMode(ADC_MEM_PHASE_B, true);                 // Convert only this phase signal
-//            break;
-//
-//        case 6:
-//
-//            MAP_ADC14_enableComparatorWindow(ADC_MEM_PHASE_A, ADC_COMP_WINDOW0);        // Phase  has the BEMF signal
-//            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_B);                         // Disable other phases comparison window
-//            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_C);                         // Disable other phases comparison window
-//
-//            MAP_ADC14_enableInterrupt(ADC_HI_INT);                                      // Interrupt when BEMF crosses 0 from below
-//            MAP_ADC14_disableInterrupt(ADC_LO_INT);                                     // Disable window lower site interrupt
-//
-//            MAP_ADC14_configureSingleSampleMode(ADC_MEM_PHASE_A, true);                 // Convert only this phase signal
-//            break;
-//
-//        default:
-//
-//            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_A);                         // Disable comparison window on the phase signal
-//            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_B);                         // Disable comparison window on the phase signal
-//            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_C);                         // Disable comparison window on the phase signal
-//            MAP_ADC14_disableInterrupt(ADC_HI_INT | ADC_LO_INT);                        // On motor stop the comparison window is disabled
-//            break;
-//    }
+            break;
 
-//    /* Prepare ADC for reading */
-//    MAP_ADC14_clearInterruptFlag(ADC_HI_INT | ADC_LO_INT);                              // Clear compare window interrupt flags
-//    MAP_ADC14_enableConversion();                                                       // Enable ADC conversion (triggered by Timer A1)
+        case 2:
+
+            MAP_ADC14_enableComparatorWindow(ADC_MEM_PHASE_B, ADC_COMP_WINDOW0);        // Phase B has the BEMF signal
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_A);                         // Disable other phases comparison window
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_C);                         // Disable other phases comparison window
+
+            MAP_ADC14_enableInterrupt(ADC_HI_INT);                                      // Interrupt when BEMF crosses 0 from below
+            MAP_ADC14_disableInterrupt(ADC_LO_INT);                                     // Disable window lower site interrupt
+
+//            MAP_ADC14_configureSingleSampleMode(ADC_MEM_PHASE_B, true);                 // Convert only this phase signal
+            break;
+
+        case 3:
+
+            MAP_ADC14_enableComparatorWindow(ADC_MEM_PHASE_A, ADC_COMP_WINDOW0);        // Phase A has the BEMF signal
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_B);                         // Disable other phases comparison window
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_C);                         // Disable other phases comparison window
+
+            MAP_ADC14_enableInterrupt(ADC_LO_INT);                                      // Interrupt when BEMF crosses 0 from above
+            MAP_ADC14_disableInterrupt(ADC_HI_INT);                                     // Disable window upper site interrupt
+
+//            MAP_ADC14_configureSingleSampleMode(ADC_MEM_PHASE_A, true);                 // Convert only this phase signal
+            break;
+
+        case 4:
+
+            MAP_ADC14_enableComparatorWindow(ADC_MEM_PHASE_C, ADC_COMP_WINDOW0);        // Phase C has the BEMF signal
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_A);                         // Disable other phases comparison window
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_B);                         // Disable other phases comparison window
+
+            MAP_ADC14_enableInterrupt(ADC_HI_INT);                                      // Interrupt when BEMF crosses 0 from below
+            MAP_ADC14_disableInterrupt(ADC_LO_INT);                                     // Disable window lower site interrupt
+
+//            MAP_ADC14_configureSingleSampleMode(ADC_MEM_PHASE_C, true);                 // Convert only this phase signal
+            break;
+
+        case 5:
+
+            MAP_ADC14_enableComparatorWindow(ADC_MEM_PHASE_B, ADC_COMP_WINDOW0);        // Phase B has the BEMF signal
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_A);                         // Disable other phases comparison window
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_C);                         // Disable other phases comparison window
+
+            MAP_ADC14_enableInterrupt(ADC_LO_INT);                                      // Interrupt when BEMF crosses 0 from above
+            MAP_ADC14_disableInterrupt(ADC_HI_INT);                                     // Disable window upper site interrupt
+
+//            MAP_ADC14_configureSingleSampleMode(ADC_MEM_PHASE_B, true);                 // Convert only this phase signal
+            break;
+
+        case 6:
+
+            MAP_ADC14_enableComparatorWindow(ADC_MEM_PHASE_A, ADC_COMP_WINDOW0);        // Phase  has the BEMF signal
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_B);                         // Disable other phases comparison window
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_C);                         // Disable other phases comparison window
+
+            MAP_ADC14_enableInterrupt(ADC_HI_INT);                                      // Interrupt when BEMF crosses 0 from below
+            MAP_ADC14_disableInterrupt(ADC_LO_INT);                                     // Disable window lower site interrupt
+
+//            MAP_ADC14_configureSingleSampleMode(ADC_MEM_PHASE_A, true);                 // Convert only this phase signal
+            break;
+
+        default:
+
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_A);                         // Disable comparison window on the phase signal
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_B);                         // Disable comparison window on the phase signal
+            MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_C);                         // Disable comparison window on the phase signal
+            MAP_ADC14_disableInterrupt(ADC_HI_INT | ADC_LO_INT);                        // On motor stop the comparison window is disabled
+            MAP_ADC14_disableConversion();
+            return;
+    }
+
+    /* Debug */
+    ADC14_enableInterrupt(ADC_INT0);
+    ADC14_configureMultiSequenceMode(ADC_MEM0, ADC_MEM2, true);
+    MAP_ADC14_clearInterruptFlag (ADC_INT0 | ADC_INT1 | ADC_HI_INT | ADC_LO_INT | ADC_IN_INT);
+
+    /* Prepare ADC for reading */
+    MAP_ADC14_clearInterruptFlag(ADC_HI_INT | ADC_LO_INT);                              // Clear compare window interrupt flags
+    MAP_ADC14_enableConversion();                                                       // Enable ADC conversion (triggered by Timer A1)
 
 
 }
