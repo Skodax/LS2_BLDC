@@ -33,6 +33,7 @@
 #include <ti/sysbios/knl/Event.h>
 #include <ti/sysbios/knl/Semaphore.h>
 #include <ti/sysbios/knl/Mailbox.h>
+#include <ti/sysbios/knl/Clock.h>
 
 /* Drivers header files */
 #include "ti_drivers_config.h"
@@ -98,7 +99,7 @@ extern Task_Handle taskPhaseChange;
 extern Task_Handle taskSpeedCalculator;
 
 extern Timer_Handle timerMotorControlOL;
-extern Timer_Handle timerMotorAcc;
+extern Clock_Handle clockMotorAccelerator;
 
 extern Event_Handle eventMotorControl;
 extern Event_Handle eventPhaseChange;
@@ -124,7 +125,7 @@ void hwiPort1Fx(UArg arg);
 void hwiPort3Fx(UArg arg);
 void hwiPort5Fx(UArg arg);
 void timerMotorControlOLFx(UArg arg);
-void timerMotorAccFx(UArg arg);
+void clockMotorAcceleratorFx(UArg arg);
 
 void swiMotorStopFx(UArg arg1, UArg arg2);
 void swiMotorToggleStatusFx(UArg arg1, UArg arg2);
@@ -183,8 +184,8 @@ void timerMotorControlOLFx(UArg arg){
     Event_post(eventPhaseChange, EVENT_CHANGE_PHASE);           // Change phase (next one)
 }
 
-/* Timer - Acceleration */
-void timerMotorAccFx(UArg arg){
+/* Clock - Acceleration */
+void clockMotorAcceleratorFx(UArg arg){
     Event_post(eventMotorControl, EVENT_MOTOR_MBX_SPEED);
 }
 
@@ -260,13 +261,10 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                 /* Acceleration timer */
                 if(motorEnabeled){
                     speed = 0;
-                    Timer_start(timerMotorAcc);
+                    Clock_start(clockMotorAccelerator);
 
                 } else {
-                    Timer_stop(timerMotorAcc);
-
-                    // Todo: Remove -> Debug
-//                    MAP_ADC14_disableConversion();
+                    Clock_stop(clockMotorAccelerator);
                 }
 
                 if(!motorEnabeled){
@@ -288,7 +286,8 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                     speed += 50;
                     if(speed > MOTOR_OL_MAX_SPEED){
                         speed = MOTOR_OL_MAX_SPEED;
-                        Timer_stop(timerMotorAcc);
+//                        Timer_stop(timerMotorAcc);
+                        Clock_stop(clockMotorAccelerator);
 
                         // Todo: Remove -> Debug
                         // Start sensing bemf

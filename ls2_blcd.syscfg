@@ -22,7 +22,7 @@ const GPIO8   = GPIO.addInstance();
 const GPIO9   = GPIO.addInstance();
 const GPIO10  = GPIO.addInstance();
 const GPIO11  = GPIO.addInstance();
-const GPIO16  = GPIO.addInstance();
+const GPIO12  = GPIO.addInstance();
 const PWM     = scripting.addModule("/ti/drivers/PWM", {}, false);
 const PWM1    = PWM.addInstance();
 const PWM2    = PWM.addInstance();
@@ -104,9 +104,9 @@ GPIO11.mode            = "Output";
 GPIO11.$name           = "BEMF_ZCD_GPIO";
 GPIO11.gpioPin.$assign = "expansion.12";
 
-GPIO16.$name           = "BEMF_PHC_GPIO";
-GPIO16.mode            = "Output";
-GPIO16.gpioPin.$assign = "expansion.10";
+GPIO12.$name           = "BEMF_PHC_GPIO";
+GPIO12.mode            = "Output";
+GPIO12.gpioPin.$assign = "expansion.10";
 
 PWM1.$name                = "PHASE_A_HIN";
 PWM1.timer.$assign        = "Timer_A1";
@@ -129,6 +129,7 @@ Power.performanceLevel2.$name = "ti_drivers_power_PowerMSP432PerfLevels1";
 Power.performanceLevel1.$name = "ti_drivers_power_PowerMSP432PerfLevels2";
 Power.performanceLevel0.$name = "ti_drivers_power_PowerMSP432PerfLevels3";
 
+RTOS.timer0.resource.$assign = "Timer_A0";
 
 SPI1.$name                             = "LCD_EUSCI_BASE";
 SPI1.defaultTxBufferValue              = "0xFF";
@@ -159,7 +160,6 @@ LED2.$hardware = system.deviceData.board.components.LED2_GREEN;
  * version of the tool will not impact the pinmux you originally saw.  These lines can be completely deleted in order to
  * re-solve from scratch.
  */
-RTOS.timer0.resource.$suggestSolution    = "Timer_A0";
 Button1.gpioPin.gpioPin.$suggestSolution = "P1.1.GPIO/EUSCI_A0_SPI.CLK";
 Button2.gpioPin.gpioPin.$suggestSolution = "P1.4.GPIO/EUSCI_B0_SPI.STE";
 LED1.gpioPin.gpioPin.$suggestSolution    = "P1.0.GPIO/EUSCI_A0_SPI.STE";
