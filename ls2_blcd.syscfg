@@ -120,9 +120,9 @@ PWM3.$name                = "PHASE_C_HIN";
 PWM3.timer.$assign        = "Timer_A1";
 PWM3.timer.pwmPin.$assign = "expansion.25";
 
-PWM4.$name                = "BEMF_READ_REF";
-PWM4.timer.$assign        = "Timer_A1";
-PWM4.timer.pwmPin.$assign = "expansion.18";
+PWM4.$name                = "ADC_TRIGGER";
+PWM4.timer.$assign        = "Timer_A2";
+PWM4.timer.pwmPin.$assign = "boosterpack.37";
 
 Power.performanceLevel3.$name = "ti_drivers_power_PowerMSP432PerfLevels0";
 Power.performanceLevel2.$name = "ti_drivers_power_PowerMSP432PerfLevels1";

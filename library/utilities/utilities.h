@@ -64,5 +64,10 @@ int16_t map(int16_t x, Range *in, Range *out);
  */
 void discretizePoint(Point *point, Range *rangeX, Range *rangeY, Point *refPoint);
 
+/* PWM DUTY CYCLE CALCULATOR
+ * In:  Duty cycle in percentage
+ * Out: Actual duty cycle for the driver
+ */
+uint32_t dutyCycle(uint8_t percentage);
 
 #endif /* LIBRARY_UTILITIES_UTILITIES_H_ */

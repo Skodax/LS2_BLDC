@@ -8,6 +8,9 @@
 /* HEADER FILE */
 #include "utilities.h"
 
+/* Drivers header files */
+#include <ti/drivers/PWM.h>
+
 /****************************************************************************************************************************************************
  *      FUNCTIONS
  ****************************************************************************************************************************************************/
@@ -36,4 +39,16 @@ void discretizePoint(Point *point, Range *rangeX, Range *rangeY, Point *refPoint
         point->x = refPoint->x;
         point->y = refPoint->y;
     }
+}
+
+/* PWM DUTY CYCLE CALCULATOR
+ * In:  Duty cycle in percentage
+ * Out: Actual duty cycle for the driver
+ */
+uint32_t dutyCycle(uint8_t percentage){
+    /* Duty Cycle calculator
+     * In:  Duty cycle from 0 to 100 (percentage %)
+     * Out: Duty value for the PWM driver
+     */
+    return (uint32_t) (((uint64_t) PWM_DUTY_FRACTION_MAX * percentage) / 100);
 }

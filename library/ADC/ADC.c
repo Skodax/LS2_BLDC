@@ -40,6 +40,7 @@
 #include <ti/drivers/Board.h>
 
 /* User libraries */
+#include "../utilities/utilities.h"
 
 
 /****************************************************************************************************************************************************
@@ -70,6 +71,11 @@ extern Semaphore_Handle producerStop;       // senyal per parar la producció de 
 extern Semaphore_Handle startConversion;    // senyal per fer la prendre dada de l'ADC1
        Queue_Handle     myQueue;            // gestor de la cua associada al buffer
 
+
+/****************************************************************************************************************************************************
+*      DIVER HANDLERS
+****************************************************************************************************************************************************/
+ PWM_Handle PWM_ADC_trigger;
 
 /****************************************************************************************************************************************************
  *      FUNCTION DECLARATION
@@ -180,6 +186,30 @@ void swiADCResultsFx(UArg arg0, UArg arg1){
 
 void taskADCFx(UArg arg0, UArg arg1){
 
+    /* PWM INITIALIZATION */
+    // Initialize the PWM parameters
+    PWM_Params PWM_params;
+    PWM_Params_init(&PWM_params);
+    PWM_params.idleLevel = PWM_IDLE_LOW;         // Output low when PWM is not running
+    PWM_params.periodUnits = PWM_PERIOD_US;      // Period is in us
+    PWM_params.periodValue = 20;                 //10us -> 100KHz
+    PWM_params.dutyUnits = PWM_DUTY_FRACTION;    // Duty is in fractional percentage
+    PWM_params.dutyValue = 0;
+
+    // Open the PWM instances
+    PWM_ADC_trigger = PWM_open(ADC_TRIGGER, &PWM_params);
+
+    // Check if PWM have been opened
+    if ( PWM_ADC_trigger == NULL) {
+        System_printf("No s'ha pogut agafar el driver per els PWM dels ADC trigger \n");
+        System_flush();
+        while (1);
+    }
+
+    // Start ADC trigger signal
+    PWM_setDuty(PWM_ADC_trigger, dutyCycle(50));                                       // Set ADC trigger Ref. duty at 50%
+    PWM_start(PWM_ADC_trigger);
+
     for(i = 0; i < PHASE_A_BUFF_LEN; i++){
         PhaseA_buff[i] = 0;
         PhaseB_buff[i] = 0;
@@ -269,8 +299,11 @@ bool ADCinit(void)
     if(!errorInit){return errorInit;} //check error
 
     // senyal de trigger per realitzar la conversio a l'ADC
-    errorInit = MAP_ADC14_setSampleHoldTrigger(ADC_TRIGGER_SOURCE3, //TA1_C1
-                                               false);              //rising edge
+//    errorInit = MAP_ADC14_setSampleHoldTrigger(ADC_TRIGGER_SOURCE3, //TA1_C1
+//                                               false);              //rising edge
+
+    errorInit = MAP_ADC14_setSampleHoldTrigger(ADC_TRIGGER_SOURCE5, //TA2_C1
+                                                   false);              //rising edge
     // la conversio s'associa al flanc de l'ADC (en mode Automatic, l'ADC inicia una nova conversio
     // just en acabar la conversio actual i sense esperar un nou trigger; es a dir, el trigger dispara
     // l'inici de la conversio automatica).
@@ -463,7 +496,8 @@ void confAdcBemf(uint8_t phase){
 
     /* Debug */
     ADC14_enableInterrupt(ADC_INT0);
-    ADC14_configureMultiSequenceMode(ADC_MEM0, ADC_MEM2, true);
+//    ADC14_configureMultiSequenceMode(ADC_MEM0, ADC_MEM2, true);
+    MAP_ADC14_configureSingleSampleMode(ADC_MEM_PHASE_A, true);
     MAP_ADC14_clearInterruptFlag (ADC_INT0 | ADC_INT1 | ADC_HI_INT | ADC_LO_INT | ADC_IN_INT);
 
     /* Prepare ADC for reading */

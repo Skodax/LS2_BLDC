@@ -116,7 +116,6 @@ extern Mailbox_Handle mbxDutyCycle;
 PWM_Handle PWM_A;
 PWM_Handle PWM_B;
 PWM_Handle PWM_C;
-PWM_Handle BEMF_REF;
 
 /****************************************************************************************************************************************************
  *      FUNCTION DECLARATION
@@ -347,7 +346,7 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
     PWM_Params_init(&PWM_params);
     PWM_params.idleLevel = PWM_IDLE_LOW;         // Output low when PWM is not running
     PWM_params.periodUnits = PWM_PERIOD_US;      // Period is in us
-    PWM_params.periodValue = 30;                // 100us -> 10KHz
+    PWM_params.periodValue = 30;                 // 30us -> 33KHz
     PWM_params.dutyUnits = PWM_DUTY_FRACTION;    // Duty is in fractional percentage
     PWM_params.dutyValue = 0;                    // 0% initial duty cycle
 
@@ -355,10 +354,9 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
     PWM_A = PWM_open(PHASE_A_HIN, &PWM_params);
     PWM_B = PWM_open(PHASE_B_HIN, &PWM_params);
     PWM_C = PWM_open(PHASE_C_HIN, &PWM_params);
-    BEMF_REF = PWM_open(BEMF_READ_REF, &PWM_params);
 
     // Check if PWM have been opened
-    if (PWM_A == NULL || PWM_B == NULL || PWM_C == NULL || BEMF_REF == NULL) {
+    if (PWM_A == NULL || PWM_B == NULL || PWM_C == NULL) {
         System_printf("No s'ha pogut agafar el driver per els PWM dels motors \n");
         System_flush();
         while (1);
@@ -374,8 +372,7 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
     /* Motor initialization */
     /* Stop and cut power to the motor */
     setPhase(0);                                                                // phase = 0, cuts power
-    PWM_setDuty(BEMF_REF, dutyCycle(50));                                       // Set BEMF Ref. duty at 50%
-    PWM_start(BEMF_REF);                                                        // Start the signal. It never can be stopped. ADC is triggered with this signal
+                                                       // Start the signal. It never can be stopped. ADC is triggered with this signal
 
     /* MAIN TASK LOOP */
     while(1){
@@ -589,13 +586,6 @@ void setPhase(uint8_t phase){
     }
 }
 
-uint32_t dutyCycle(uint8_t percentage){
-    /* Duty Cycle calculator
-     * In:  Duty cycle from 0 to 100 (percentage %)
-     * Out: Duty value for the PWM driver
-     */
-    return (uint32_t) (((uint64_t) PWM_DUTY_FRACTION_MAX * percentage) / 100);
-}
 
 uint32_t dutyCycleForOLCtrl(int32_t speed){
 
