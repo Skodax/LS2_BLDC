@@ -166,7 +166,6 @@ void hwiADCFx(UArg arg){
      */
     MAP_ADC14_clearInterruptFlag(
             ADC_IN_INT | ADC_LO_INT | ADC_HI_INT | ADC_INT0 | ADC_INT1 | ADC_INT2 | ADC_INT1); // neteja flags
-    //Semaphore_post(startConversion); // assemyalem al productor la disponibilitat de les dades ADC
 }
 
 void swiADCResultsFx(UArg arg0, UArg arg1){
@@ -201,7 +200,6 @@ void taskADCFx(UArg arg0, UArg arg1){
     while(1){
 
         events = Event_pend(eventADC, Event_Id_NONE, EVENT_PHASE | EVENT_ZERO_CROSS_DOWN | EVENT_ZERO_CROSS_UP, BIOS_WAIT_FOREVER);
-        //Semaphore_pend(semADCSample, BIOS_WAIT_FOREVER);
 
         if(events & EVENT_PHASE){
 
