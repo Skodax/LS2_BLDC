@@ -14,4 +14,7 @@
 bool ADCinit(void);
 void confAdcBemf(uint8_t phase);
 
+/* Debug */
+void phaseChangeLog(void);
+
 #endif /* LIBRARY_ADC_ADC_H_ */

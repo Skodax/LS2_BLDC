@@ -92,16 +92,6 @@
 #define CLC_TIMER_CCR_IE            TIMER_A_CCIE_CCR0_INTERRUPT_ENABLE      // Enable capture compare interruption
 #define CLC_TIME_SHIFT              2                                       // Time for the clc timer is PhaseChangeTime/4 bc Timestap runs at 48MHz and the timer at 24MHz, also the time is half the time of the phase change
 
-Timer_A_UpModeConfig clcTimerConfig =                                       // It's not constant bc tick period will be changed each time
-{
-        TIMER_A_CLOCKSOURCE_SMCLK,                                          // SMCLK Clock Source 24MHz, if this value changes CLC_TIME_SHIFT must be recalculated
-        TIMER_A_CLOCKSOURCE_DIVIDER_1,                                      // SMCLK/1
-        0,                                                                  // 0 tick period by default
-        TIMER_A_TAIE_INTERRUPT_DISABLE,                                     // Disable Timer interrupt
-        CLC_TIMER_CCR_IE ,                                                  // Enable capture compare register interrupt
-        TIMER_A_DO_CLEAR                                                    // Clear value
-};
-
 /****************************************************************************************************************************************************
  *      RTOS HANDLERS
  ****************************************************************************************************************************************************/
@@ -204,6 +194,7 @@ void hwiPort5Fx(UArg arg){
 void hwiClcTimerFx(UArg arg){
     Timer_A_clearCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);
     Timer_A_stopTimer(CLC_TIMER);
+    phaseChangeLog();
 }
 
 /* Timer */
@@ -274,13 +265,6 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
 
             Event_post(eventPhaseChange, EVENT_PHASE_STOP);                         // Cut power to the motor
 
-            /* Debug */
-            // Todo: Remove
-            clcTimerConfig.timerPeriod = 5000;
-            Timer_A_configureUpMode(CLC_TIMER, &clcTimerConfig);                    // Configure timer in up mode and resets
-            Timer_A_startCounter(CLC_TIMER, TIMER_A_UP_MODE);
-            System_flush();
-
         } else {
 
             if(events & EVENT_MOTOR_TOGGLE_STATUS){
@@ -317,14 +301,7 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                     speed += 50;
                     if(speed > MOTOR_OL_MAX_SPEED){
                         speed = MOTOR_OL_MAX_SPEED;
-//                        Timer_stop(timerMotorAcc);
                         Clock_stop(clockMotorAccelerator);
-
-                        // Todo: Remove -> Debug
-                        // Start sensing bemf
-
-                        //MAP_ADC14_configureSingleSampleMode(ADC_MEM0, true);
-//                        MAP_ADC14_enableConversion();
                     }
 
 
@@ -396,6 +373,14 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
     }
 
     /* Closed Loop control timer */
+    Timer_A_UpModeConfig clcTimerConfig = {
+            TIMER_A_CLOCKSOURCE_SMCLK,                                          // SMCLK Clock Source 24MHz, if this value changes CLC_TIME_SHIFT must be recalculated
+            TIMER_A_CLOCKSOURCE_DIVIDER_1,                                      // SMCLK/1
+            0,                                                                  // 0 tick period by default
+            TIMER_A_TAIE_INTERRUPT_DISABLE,                                     // Disable Timer interrupt
+            CLC_TIMER_CCR_IE ,                                                  // Enable capture compare register interrupt
+            TIMER_A_DO_CLEAR                                                    // Clear value
+    };
     uint32_t tstart, tstop, time = 0;                                           // Timestamps store variables
     Timer_A_configureUpMode(CLC_TIMER, &clcTimerConfig);                        // Configure timer in up mode
     Interrupt_enableInterrupt(CLC_TIMER_INT);                                   // Enable timer's interruptions
@@ -511,7 +496,8 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
             /* Send speed */
             speed = 0;                                                      // Motor has stoped
             time = 0;                                                       // Reset time accumulator
-            Mailbox_post(mbxTheoricalSpeed, &speed, BIOS_WAIT_FOREVER);     // Wait until speed can be printed
+//            Mailbox_post(mbxTheoricalSpeed, &speed, BIOS_WAIT_FOREVER);     // Wait until speed can be printed
+            Mailbox_post(mbxTheoricalSpeed, &speed, BIOS_NO_WAIT);     // Wait until speed can be printed
 
         } else if(events & EVENT_ELECTRIC_REVOLUTION){
 
@@ -614,7 +600,7 @@ void setPhase(uint8_t phase){
 
         default:
 
-            // CUT CURRENT TO THE MOTOR
+            /* CUT CURRENT TO THE MOTOR */
             PWM_stop(PWM_A);
             PWM_stop(PWM_B);
             PWM_stop(PWM_C);
@@ -623,16 +609,12 @@ void setPhase(uint8_t phase){
             GPIO_write(PHASE_B_LIN, 0);
             GPIO_write(PHASE_C_LIN, 0);
 
-            // Set speed to 0
+            /* Set speed to 0 */
             Event_post(eventSpeed, EVENT_SPEED_0);
-
-            //Todo: Remove when release
-//            System_printf("Phase: CUT CURRENT \n");
-//            System_flush();
-
             break;
     }
 }
+
 
 uint32_t dutyCycle(uint8_t percentage){
     /* Duty Cycle calculator
@@ -668,5 +650,9 @@ void motorStatusLED(uint8_t motorEnabeled){
     /* MKII Boosterpack LEDs */
     GPIO_write(MKII_LED_Red_GPIO, !motorEnabeled);                      // Turn on Red LED when the motor is disabled
     GPIO_write(MKII_LED_Green_GPIO, motorEnabeled);                     // Turn on Green LED when the motor is enabled
+}
+
+void closedLoopControlPhaseChange(void){
+    Timer_A_startCounter(CLC_TIMER, TIMER_A_UP_MODE);                   // Starts the timer that  will trigger the phase change
 }
 

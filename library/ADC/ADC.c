@@ -40,6 +40,7 @@
 #include <ti/drivers/Board.h>
 
 /* User libraries */
+#include "../BLDC/BLDC_driver.h"                            // Used for trigger the timer for phase change on BEMF zero cross on closed loop control
 
 
 /****************************************************************************************************************************************************
@@ -59,16 +60,9 @@
 /****************************************************************************************************************************************************
  *      RTOS HANDLERS
  ****************************************************************************************************************************************************/
-extern Swi_Handle swiADCResults;
-
 extern Task_Handle taskADC;                 // la tasca productora de l'ADC
-extern Semaphore_Handle semADCSample;
 
 extern Task_Handle taskPlot;                // la tasca consumidora d'enviar dades a consola
-extern Semaphore_Handle consumerStop;       // senyal per d'espera per enviar dades a consola
-extern Semaphore_Handle producerStop;       // senyal per parar la producció de dades
-extern Semaphore_Handle startConversion;    // senyal per fer la prendre dada de l'ADC1
-       Queue_Handle     myQueue;            // gestor de la cua associada al buffer
 
 
 /****************************************************************************************************************************************************
@@ -79,7 +73,7 @@ void swiADCResultsFx(UArg arg0, UArg arg1);
 
 void hwiADCFx(UArg arg);                    // funcio HWI associada a l'ADC i trigger-Schmidt
 
-void taskADCFx(UArg arg0, UArg arg1);    // tasca productora
+void taskADCFx(UArg arg0, UArg arg1);       // tasca de debug
 
 void plot_task_fxn(UArg arg0, UArg arg1);   // tasca consumidora:enviament a consola
 void my_idle_fxn(void);                     // res a fer
@@ -113,14 +107,17 @@ uint32_t PhaseA_time[PHASE_A_BUFF_LEN];
 #define ZERO_CROSS_BUFF_LEN     50
 #define ZERO_CROSS_UP           200
 #define ZERO_CROSS_DOWN         -200
-uint16_t j = 0;
+uint16_t j, k = 0;
 int16_t ZeroCross_buff[ZERO_CROSS_BUFF_LEN];
 uint32_t ZeroCross_time[ZERO_CROSS_BUFF_LEN];
+int16_t PhaseChange_buff[ZERO_CROSS_BUFF_LEN];
+uint32_t PhaseChange_time[ZERO_CROSS_BUFF_LEN];
 
 extern Event_Handle eventADC;
 #define EVENT_PHASE             Event_Id_00
 #define EVENT_ZERO_CROSS_UP     Event_Id_01
 #define EVENT_ZERO_CROSS_DOWN   Event_Id_02
+#define EVENT_PHASE_CHANGE      Event_Id_03
 
 /****************************************************************************************************************************************************
  *      HWI
@@ -128,37 +125,29 @@ extern Event_Handle eventADC;
 void hwiADCFx(UArg arg){
     enableInts = MAP_ADC14_getEnabledInterruptStatus(); // capturem les int que estan habilitades
     actualInts = MAP_ADC14_getInterruptStatus();        // capturem les int que s'han disparat
-    /*implementacio del trigger Schmidt: la finestra de comparacio esta associada al ADCMEM0 i
-     * els valors de la finestra es troben definits a la ADCinit() */
-    if(enableInts & actualInts & ADC_LO_INT){ // si s'ha disparat la INT de que el senyal d'entrada
-                                              // esta per SOTA del valor de finestra de comparacio,
-        MAP_ADC14_disableInterrupt(ADC_LO_INT);   // DESHABILITEM la INT de 'valor per sota' i
-        //MAP_ADC14_enableInterrupt(ADC_HI_INT);    // HABILITEM la INT de 'valor per sobre'.
+
+    if(enableInts & actualInts & ADC_LO_INT){
+
+        MAP_ADC14_disableInterrupt(ADC_LO_INT);         // DESHABILITEM la INT de 'valor per sota' i
+        closedLoopControlPhaseChange();                 // Starts timer that will trigger the phase change
         GPIO_write(BEMF_ZCD_GPIO, 0);
-        //GPIO_toggle(Zero_Cross_Check_GPIO);             // Assenyalem el pas pel valor baix en flanc de baixada
-        // aquest conjunt d'intruccions anteriors es un trigger per flanc de baixada
 
         /* Debug */
         Event_post(eventADC, EVENT_ZERO_CROSS_DOWN);
 
    }
-    if(enableInts & actualInts & ADC_HI_INT){ // si s'ha disparat la INT de que el senyal d'entrada
-                                              // esta per SOBRE del valor de finestra de comparacio,
-        MAP_ADC14_disableInterrupt(ADC_HI_INT);   // DESHABILITEM la INT de 'valor per sobre' i
-        //MAP_ADC14_enableInterrupt(ADC_LO_INT);    // HABILITEM la INT de 'valor per sota'.
-        //GPIO_toggle(Zero_Cross_Check_GPIO);             // Assenyalem el pas pel valor baix en flanc de pujada
+    if(enableInts & actualInts & ADC_HI_INT){
+
+        MAP_ADC14_disableInterrupt(ADC_HI_INT);         // DESHABILITEM la INT de 'valor per sobre' i
+        closedLoopControlPhaseChange();                 // Starts timer that will trigger the phase change
         GPIO_write(BEMF_ZCD_GPIO, 1);
-        // aquest conjunt d'intruccions anteriors es un trigger per flanc de pujada
 
         /* Debug */
         Event_post(eventADC, EVENT_ZERO_CROSS_UP);
-
     }
 
     if(enableInts & actualInts & ADC_INT0){
         Event_post(eventADC, EVENT_PHASE);
-//        Semaphore_post(semADCSample);
-        //Swi_post(swiADCResults);
     }
 
     /* NOTA sobre el trigger Schmidt: hem programat un cicle d'histeresi sobre les INT que estan
@@ -191,6 +180,8 @@ void taskADCFx(UArg arg0, UArg arg1){
     for(j = 0; j < ZERO_CROSS_BUFF_LEN; j++){
         ZeroCross_buff[j] = 0;
         ZeroCross_time[j] = 0;
+        PhaseChange_buff[j] = 0;
+        PhaseChange_time[j] = 0;
     }
 
     j = 0;
@@ -201,29 +192,36 @@ void taskADCFx(UArg arg0, UArg arg1){
 
         events = Event_pend(eventADC, Event_Id_NONE, EVENT_PHASE | EVENT_ZERO_CROSS_DOWN | EVENT_ZERO_CROSS_UP, BIOS_WAIT_FOREVER);
 
-        if(events & EVENT_PHASE){
-
-            PhaseA_buff[i] = (int_fast16_t) ADC14_getResult(ADC_MEM_PHASE_A);
-            PhaseB_buff[i] = (int_fast16_t) ADC14_getResult(ADC_MEM_PHASE_B);
-            PhaseC_buff[i] = (int_fast16_t) ADC14_getResult(ADC_MEM_PHASE_C);
-            PhaseA_time[i] = Timestamp_get32();
-            i++;
-            if(i >= PHASE_A_BUFF_LEN){i = 0;}
-        }
-
-        if(events & EVENT_ZERO_CROSS_DOWN){
-            ZeroCross_buff[j] = ZERO_CROSS_DOWN;
-            ZeroCross_time[j] = Timestamp_get32();
-            j++;
-            if(j >= ZERO_CROSS_BUFF_LEN){j = 0;}
-        }
-
-        if(events & EVENT_ZERO_CROSS_UP){
-            ZeroCross_buff[j] = ZERO_CROSS_UP;
-            ZeroCross_time[j] = Timestamp_get32();
-            j++;
-            if(j >= ZERO_CROSS_BUFF_LEN){j = 0;}
-        }
+//        if(events & EVENT_PHASE){
+//
+//            PhaseA_buff[i] = (int_fast16_t) ADC14_getResult(ADC_MEM_PHASE_A);
+//            PhaseB_buff[i] = (int_fast16_t) ADC14_getResult(ADC_MEM_PHASE_B);
+//            PhaseC_buff[i] = (int_fast16_t) ADC14_getResult(ADC_MEM_PHASE_C);
+//            PhaseA_time[i] = Timestamp_get32();
+//            i++;
+//            if(i >= PHASE_A_BUFF_LEN){i = 0;}
+//        }
+//
+//        if(events & EVENT_ZERO_CROSS_DOWN){
+//            ZeroCross_buff[j] = ZERO_CROSS_DOWN;
+//            ZeroCross_time[j] = Timestamp_get32();
+//            j++;
+//            if(j >= ZERO_CROSS_BUFF_LEN){j = 0;}
+//        }
+//
+//        if(events & EVENT_ZERO_CROSS_UP){
+//            ZeroCross_buff[j] = ZERO_CROSS_UP;
+//            ZeroCross_time[j] = Timestamp_get32();
+//            j++;
+//            if(j >= ZERO_CROSS_BUFF_LEN){j = 0;}
+//        }
+//
+//        if(events & EVENT_ZERO_CROSS_UP){
+//            PhaseChange_buff[j] = ZERO_CROSS_UP;
+//            PhaseChange_buff[j] = Timestamp_get32();
+//            j++;
+//            if(j >= ZERO_CROSS_BUFF_LEN){j = 0;}
+//        }
 
     }
 
@@ -469,4 +467,8 @@ void confAdcBemf(uint8_t phase){
     MAP_ADC14_enableConversion();                                                       // Enable ADC conversion (triggered by Timer A1)
 
 
+}
+
+void phaseChangeLog(void){
+    Event_post(eventADC, EVENT_PHASE_CHANGE);
 }
