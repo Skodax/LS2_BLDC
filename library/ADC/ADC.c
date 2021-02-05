@@ -61,6 +61,8 @@
  ****************************************************************************************************************************************************/
 extern Swi_Handle swiADCResults;
 
+extern Swi_Handle swiBemfZeroCross;
+
 extern Task_Handle taskADC;                 // la tasca productora de l'ADC
 extern Semaphore_Handle semADCSample;
 
@@ -138,7 +140,7 @@ void hwiADCFx(UArg arg){
         //GPIO_toggle(Zero_Cross_Check_GPIO);             // Assenyalem el pas pel valor baix en flanc de baixada
         // aquest conjunt d'intruccions anteriors es un trigger per flanc de baixada
 
-        closedLoopControlPhaseChange();                 // Starts timer that will trigger the phase change
+        Swi_post(swiBemfZeroCross);                         // Starts timer that will trigger the phase change
 
         /* Debug */
         Event_post(eventADC, EVENT_ZERO_CROSS_DOWN);
@@ -152,7 +154,7 @@ void hwiADCFx(UArg arg){
         GPIO_write(BEMF_ZCD_GPIO, 1);
         // aquest conjunt d'intruccions anteriors es un trigger per flanc de pujada
 
-        closedLoopControlPhaseChange();                 // Starts timer that will trigger the phase change
+        Swi_post(swiBemfZeroCross);                         // Starts timer that will trigger the phase change
 
         /* Debug */
         Event_post(eventADC, EVENT_ZERO_CROSS_UP);
