@@ -40,7 +40,7 @@
 #include <ti/drivers/Board.h>
 
 /* User libraries */
-
+#include "../BLDC/BLDC_driver.h"                            // Used for trigger the timer for phase change on BEMF zero cross on closed loop control
 
 /****************************************************************************************************************************************************
  *      MACROS
@@ -138,6 +138,8 @@ void hwiADCFx(UArg arg){
         //GPIO_toggle(Zero_Cross_Check_GPIO);             // Assenyalem el pas pel valor baix en flanc de baixada
         // aquest conjunt d'intruccions anteriors es un trigger per flanc de baixada
 
+        closedLoopControlPhaseChange();                 // Starts timer that will trigger the phase change
+
         /* Debug */
         Event_post(eventADC, EVENT_ZERO_CROSS_DOWN);
 
@@ -149,6 +151,8 @@ void hwiADCFx(UArg arg){
         //GPIO_toggle(Zero_Cross_Check_GPIO);             // Assenyalem el pas pel valor baix en flanc de pujada
         GPIO_write(BEMF_ZCD_GPIO, 1);
         // aquest conjunt d'intruccions anteriors es un trigger per flanc de pujada
+
+        closedLoopControlPhaseChange();                 // Starts timer that will trigger the phase change
 
         /* Debug */
         Event_post(eventADC, EVENT_ZERO_CROSS_UP);
@@ -281,8 +285,8 @@ bool ADCinit(void)
     if(!errorInit){return errorInit;} //check error
     // limits baix i alt de la finestra de comparacio 0 (hi ha tambe una finestra 1)
     errorInit = MAP_ADC14_setComparatorWindowValue(ADC_COMP_WINDOW0,  //configurem el comparador 0
-                                                   -256,              // valor baix finestra (int16)
-                                                   255);              // valor alt finestra
+                                                   -20,              // valor baix finestra (int16)
+                                                   20);              // valor alt finestra
     if(!errorInit){return errorInit;} //check error
 
     MAP_ADC14_disableInterrupt(0xFFFFFFFFFFFFFFFF);  // deshabilitem totes les interrupcions

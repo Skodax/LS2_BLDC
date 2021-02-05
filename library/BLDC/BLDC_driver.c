@@ -84,12 +84,22 @@
 /* Motor limits */
 #define MOTOR_OL_MAX_SPEED          2500            // Max speed with the MOTOR_MAX_DUTY
 
+/* Closed loop control */
+#define CLC_TIMER                   TIMER_A3_BASE                           // Use timer A3
+#define CLC_TIMER_INT               INT_TA3_0                               // Timer's interruptions
+#define CLC_TIMER_CCR               TIMER_A_CAPTURECOMPARE_REGISTER_0       // Use CCRO for timer up mode
+#define CLC_TIMER_CCR_IE            TIMER_A_CCIE_CCR0_INTERRUPT_ENABLE      // Enable capture compare interruption
+#define CLC_TIME_SHIFT              8 //2                                       // Time for the clc timer is PhaseChangeTime/4 bc Timestap runs at 48MHz and the timer at 24MHz, also the time is half the time of the phase change
+
+uint32_t ttstart, ttstop, ttime;
+
 /****************************************************************************************************************************************************
  *      RTOS HANDLERS
  ****************************************************************************************************************************************************/
 extern Hwi_Handle hwiPort1;
 extern Hwi_Handle hwiPort3;
 extern Hwi_Handle hwiPort5;
+extern Hwi_Handle hwiClcTimer;
 
 extern Swi_Handle swiMotorStop;
 extern Swi_Handle swiMotorToggleStatus;
@@ -124,6 +134,8 @@ PWM_Handle BEMF_REF;
 void hwiPort1Fx(UArg arg);
 void hwiPort3Fx(UArg arg);
 void hwiPort5Fx(UArg arg);
+void hwiClcTimerFx(UArg arg);
+
 void timerMotorControlOLFx(UArg arg);
 void clockMotorAcceleratorFx(UArg arg);
 
@@ -177,6 +189,15 @@ void hwiPort5Fx(UArg arg){
         GPIO_clearInt(MKII_BUTTON1_GPIO);                       // Clear interrupt flag
         Swi_post(swiMotorStop);                                 // Stop the motor
     }
+}
+
+/* Closed Loop Control timer */
+void hwiClcTimerFx(UArg arg){
+    Timer_A_clearCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);
+    Timer_A_stopTimer(CLC_TIMER);
+    GPIO_write(BEMF_PHC_CLC_GPIO, 0);
+//    ttstop = Timestamp_get32();
+//    ttime = ttstop - ttstart;
 }
 
 /* Timer */
@@ -364,6 +385,20 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
         while (1);
     }
 
+    /* Closed Loop control timer */
+    Timer_A_UpModeConfig clcTimerConfig = {
+            TIMER_A_CLOCKSOURCE_SMCLK,                                          // SMCLK Clock Source 24MHz, if this value changes CLC_TIME_SHIFT must be recalculated
+            TIMER_A_CLOCKSOURCE_DIVIDER_1,                                      // SMCLK/1
+            0,                                                                  // 0 tick period by default
+            TIMER_A_TAIE_INTERRUPT_DISABLE,                                     // Disable Timer interrupt
+            CLC_TIMER_CCR_IE ,                                                  // Enable capture compare register interrupt
+            TIMER_A_DO_CLEAR                                                    // Clear value
+    };
+    uint32_t tstart, tstop, time = 0;                                           // Timestamps store variables
+    Timer_A_configureUpMode(CLC_TIMER, &clcTimerConfig);                        // Configure timer in up mode
+    Interrupt_enableInterrupt(CLC_TIMER_INT);                                   // Enable timer's interruptions
+
+
     /* Duty cycle and phase */
     uint8_t phase = 0;
     uint32_t dutyCycleRaw = 0;
@@ -411,6 +446,16 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
                 phase = 1;                                                          // Reset phase
                 Event_post(eventSpeed, EVENT_ELECTRIC_REVOLUTION);                  // Motor speed calculation
             }
+
+            /* Closed loop control timer */
+            tstop = Timestamp_get32();                                              // Get current time
+            time = tstop - tstart;                                                  // Calculate time of phase change
+//            time >>= CLC_TIME_SHIFT;                                                // Time divided to match timers freq. and half of the phase change time
+            time >>= 1;
+            time /= 10;
+            tstart = tstop;                                                         // Start time for next phase
+            clcTimerConfig.timerPeriod = 100;//(uint_fast16_t) time;                      // Configure timer's period
+            Timer_A_configureUpMode(CLC_TIMER, &clcTimerConfig);                    // Configure timer in up mode and resets
 
             /* Motor State */
             PWM_setDuty(PWM_A, dutyCycleRaw);
@@ -625,3 +670,8 @@ void motorStatusLED(uint8_t motorEnabeled){
     GPIO_write(MKII_LED_Green_GPIO, motorEnabeled);                     // Turn on Green LED when the motor is enabled
 }
 
+void closedLoopControlPhaseChange(void){
+    Timer_A_startCounter(CLC_TIMER, TIMER_A_UP_MODE);                   // Starts the timer that  will trigger the phase change
+    GPIO_write(BEMF_PHC_CLC_GPIO, 1);
+//    ttstart = Timestamp_get32();
+}
