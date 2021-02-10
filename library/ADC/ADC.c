@@ -59,18 +59,10 @@
 /****************************************************************************************************************************************************
  *      RTOS HANDLERS
  ****************************************************************************************************************************************************/
-extern Swi_Handle swiADCResults;
 
 extern Swi_Handle swiBemfZeroCross;
-
 extern Task_Handle taskADC;                 // la tasca productora de l'ADC
-extern Semaphore_Handle semADCSample;
 
-extern Task_Handle taskPlot;                // la tasca consumidora d'enviar dades a consola
-extern Semaphore_Handle consumerStop;       // senyal per d'espera per enviar dades a consola
-extern Semaphore_Handle producerStop;       // senyal per parar la producció de dades
-extern Semaphore_Handle startConversion;    // senyal per fer la prendre dada de l'ADC1
-       Queue_Handle     myQueue;            // gestor de la cua associada al buffer
 
 
 /****************************************************************************************************************************************************
@@ -90,13 +82,7 @@ bool ADCinit(void);                         // configuracio driverlib ADC
 /****************************************************************************************************************************************************
  *      GLOBALS
  ****************************************************************************************************************************************************/
-/* prototips de variables*/
-typedef struct{
-    Queue_Elem element;   // estructura de punters propia de la cua
-    int16_t   adcValue;  // dada de l'ADC
-    uint32_t   tstamp;    // temps de produccio de la dada de l'ADC
 
-} Queue_data;
 
 /* les seguents variables no son estrictament necessaries, pero ajuden a seguir
  * la implementacio del trigger Schmidt al HWI.
@@ -175,10 +161,6 @@ void hwiADCFx(UArg arg){
     //Semaphore_post(startConversion); // assemyalem al productor la disponibilitat de les dades ADC
 }
 
-void swiADCResultsFx(UArg arg0, UArg arg1){
-    int16_t result = (int_fast16_t) ADC14_getResult(ADC_MEM0);
-    System_printf("%8d\n", result);
-}
 
 /****************************************************************************************************************************************************
  *      TASK
