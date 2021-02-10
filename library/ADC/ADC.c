@@ -49,35 +49,21 @@
 #define ADC_MEM_PHASE_B                             ADC_MEM1        // Memory where Phase B BEMF will be stored
 #define ADC_MEM_PHASE_C                             ADC_MEM2        // Memory where Phase C BEMF will be stored
 
-
-/* el seguent define es la mida del buffer de dades a la tasca productora.
- * Atencio: si s'augmenta molt, no s'ha d'oblidar ampliar la memoria de pila
- * d'aquesta tasca.
- */
-#define DATA_MAX 8 //buffer adc
-
 /****************************************************************************************************************************************************
  *      RTOS HANDLERS
  ****************************************************************************************************************************************************/
 
 extern Swi_Handle swiBemfZeroCross;
 extern Task_Handle taskADC;                 // la tasca productora de l'ADC
-
-
+extern Event_Handle eventADC;
 
 /****************************************************************************************************************************************************
  *      FUNCTION DECLARATION
  ****************************************************************************************************************************************************/
-/*declaracio de prototips de funcions*/
-void swiADCResultsFx(UArg arg0, UArg arg1);
 
-void hwiADCFx(UArg arg);                    // funcio HWI associada a l'ADC i trigger-Schmidt
-
-void taskADCFx(UArg arg0, UArg arg1);    // tasca productora
-
-void plot_task_fxn(UArg arg0, UArg arg1);   // tasca consumidora:enviament a consola
-void my_idle_fxn(void);                     // res a fer
-bool ADCinit(void);                         // configuracio driverlib ADC
+void hwiADCFx(UArg arg);                    // Executed when ADC has a new reading or a window interruption
+void taskADCFx(UArg arg0, UArg arg1);       // Data depuration comeing from the ADC
+bool ADCinit(void);                         // ADC configuration with driverlib
 
 /****************************************************************************************************************************************************
  *      GLOBALS
@@ -105,7 +91,6 @@ uint16_t j = 0;
 int16_t ZeroCross_buff[ZERO_CROSS_BUFF_LEN];
 uint32_t ZeroCross_time[ZERO_CROSS_BUFF_LEN];
 
-extern Event_Handle eventADC;
 #define EVENT_PHASE             Event_Id_00
 #define EVENT_ZERO_CROSS_UP     Event_Id_01
 #define EVENT_ZERO_CROSS_DOWN   Event_Id_02
@@ -114,51 +99,40 @@ extern Event_Handle eventADC;
  *      HWI
  ****************************************************************************************************************************************************/
 void hwiADCFx(UArg arg){
-    enableInts = MAP_ADC14_getEnabledInterruptStatus(); // capturem les int que estan habilitades
-    actualInts = MAP_ADC14_getInterruptStatus();        // capturem les int que s'han disparat
-    /*implementacio del trigger Schmidt: la finestra de comparacio esta associada al ADCMEM0 i
-     * els valors de la finestra es troben definits a la ADCinit() */
-    if(enableInts & actualInts & ADC_LO_INT){ // si s'ha disparat la INT de que el senyal d'entrada
-                                              // esta per SOTA del valor de finestra de comparacio,
-        MAP_ADC14_disableInterrupt(ADC_LO_INT);   // DESHABILITEM la INT de 'valor per sota' i
-        //MAP_ADC14_enableInterrupt(ADC_HI_INT);    // HABILITEM la INT de 'valor per sobre'.
+
+    /* Get interrupt flags */
+    uint_fast64_t status = MAP_ADC14_getInterruptStatus();
+    uint_fast64_t enabled = MAP_ADC14_getEnabledInterruptStatus();
+
+    /* Lower Window - Zero Cross from below */
+    if(status & enabled & ADC_LO_INT){
+
+        MAP_ADC14_disableInterrupt(ADC_LO_INT);                 // Disable this interruption, no further interruption until next phase
+        Swi_post(swiBemfZeroCross);                             // Set and trigger the Closed Loop Control timer
+
+        /* Debug */
         GPIO_write(BEMF_ZCD_GPIO, 0);
-        //GPIO_toggle(Zero_Cross_Check_GPIO);             // Assenyalem el pas pel valor baix en flanc de baixada
-        // aquest conjunt d'intruccions anteriors es un trigger per flanc de baixada
-
-        Swi_post(swiBemfZeroCross);                         // Starts timer that will trigger the phase change
-
-        /* Debug */
         Event_post(eventADC, EVENT_ZERO_CROSS_DOWN);
+    }
 
-   }
-    if(enableInts & actualInts & ADC_HI_INT){ // si s'ha disparat la INT de que el senyal d'entrada
-                                              // esta per SOBRE del valor de finestra de comparacio,
-        MAP_ADC14_disableInterrupt(ADC_HI_INT);   // DESHABILITEM la INT de 'valor per sobre' i
-        //MAP_ADC14_enableInterrupt(ADC_LO_INT);    // HABILITEM la INT de 'valor per sota'.
-        //GPIO_toggle(Zero_Cross_Check_GPIO);             // Assenyalem el pas pel valor baix en flanc de pujada
-        GPIO_write(BEMF_ZCD_GPIO, 1);
-        // aquest conjunt d'intruccions anteriors es un trigger per flanc de pujada
+    /* Upper Window - Zero Cross from above */
+    if(status  & enabled & ADC_HI_INT){
 
-        Swi_post(swiBemfZeroCross);                         // Starts timer that will trigger the phase change
+        MAP_ADC14_disableInterrupt(ADC_HI_INT);                 // Disable this interruption, no further interruption until next phase
+        Swi_post(swiBemfZeroCross);                             // Set and trigger the Closed Loop Control timer
 
         /* Debug */
+        GPIO_write(BEMF_ZCD_GPIO, 1);
         Event_post(eventADC, EVENT_ZERO_CROSS_UP);
-
     }
 
-    if(enableInts & actualInts & ADC_INT0){
+    /* Debug */
+    if(status  & enabled & ADC_INT0){
         Event_post(eventADC, EVENT_PHASE);
-//        Semaphore_post(semADCSample);
-        //Swi_post(swiADCResults);
     }
 
-    /* NOTA sobre el trigger Schmidt: hem programat un cicle d'histeresi sobre les INT que estan
-     * habilitades i deshabilitades.
-     */
-    MAP_ADC14_clearInterruptFlag(
-            ADC_IN_INT | ADC_LO_INT | ADC_HI_INT | ADC_INT0 | ADC_INT1 | ADC_INT2 | ADC_INT1); // neteja flags
-    //Semaphore_post(startConversion); // assemyalem al productor la disponibilitat de les dades ADC
+    /* Clear interrupt flags */
+    MAP_ADC14_clearInterruptFlag(status & enabled);
 }
 
 
