@@ -73,8 +73,8 @@
 #define STEPS_PER_LAP               43              // Motor steps per lap. Number of phase changes needed to complete a lap. Todo: Make sure 42 are the actual steps of the motor
 #define STEPS_PER_ELECTRIC_REV      6               // There's 6 phase changes in a complete electric revolution
 #define ELECTRIC_REV_PER_LAP        (STEPS_PER_LAP/STEPS_PER_ELECTRIC_REV)
-#define TIME_BUFF_LEN               32              // Number of time samples to average in order to calculate motor's speed
-#define TIME_AVG_SHIFT              5               // Shift factor for average calculation
+#define TIME_BUFF_LEN               16              // Number of time samples to average in order to calculate motor's speed
+#define TIME_AVG_SHIFT              4               // Shift factor for average calculation
 
 /* Motor status */
 #define MOTOR_ENABLED               1               // Motor enabled and ready to go
@@ -83,7 +83,7 @@
 #define MOTOR_CTR_CL                0               // Motor control type -> Closed loop
 
 /* Motor limits */
-#define MOTOR_OL_MAX_SPEED          2500            // Max speed with the MOTOR_MAX_DUTY
+#define MOTOR_OL_MAX_SPEED          1300 //2500            // Max speed with the MOTOR_MAX_DUTY
 
 /* Closed loop control */
 #define CLC_TIMER                   TIMER_A3_BASE                           // Use timer A3
@@ -411,7 +411,7 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
     PWM_Params_init(&PWM_params);
     PWM_params.idleLevel = PWM_IDLE_LOW;         // Output low when PWM is not running
     PWM_params.periodUnits = PWM_PERIOD_US;      // Period is in us
-    PWM_params.periodValue = 30;                // 100us -> 10KHz
+    PWM_params.periodValue = 100;                // 100us -> 10KHz
     PWM_params.dutyUnits = PWM_DUTY_FRACTION;    // Duty is in fractional percentage
     PWM_params.dutyValue = 0;                    // 0% initial duty cycle
 
@@ -541,6 +541,7 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
             /* Send speed */
             speed = 0;                                                      // Motor has stoped
             time = 0;                                                       // Reset time accumulator
+            tstart = tstop = 0;
             Mailbox_post(mbxTheoricalSpeed, &speed, BIOS_WAIT_FOREVER);     // Wait until speed can be printed
 
         } else if(events & EVENT_ELECTRIC_REVOLUTION){
@@ -682,10 +683,16 @@ uint32_t dutyCycleForOLCtrl(int32_t speed){
      * timer period.
      */
 
-    if(speed > 1800){  return dutyCycle(30);}
-    else if(speed > 1400){  return dutyCycle(25);}
-    else if(speed > 1100){  return dutyCycle(20);}
-    else if(speed > 700){   return dutyCycle(15);}
+//    if(speed > 1800){  return dutyCycle(30);}
+//    else if(speed > 1400){  return dutyCycle(25);}
+//    else if(speed > 1100){  return dutyCycle(20);}
+//    else if(speed > 700){   return dutyCycle(15);}
+//    else {                  return dutyCycle(10);}
+
+    if(speed > 1800){  return dutyCycle(20);}
+    else if(speed > 1400){  return dutyCycle(18);}
+    else if(speed > 1100){  return dutyCycle(16);}
+    else if(speed > 700){   return dutyCycle(14);}
     else {                  return dutyCycle(10);}
 }
 
