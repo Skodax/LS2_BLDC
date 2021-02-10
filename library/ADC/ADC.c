@@ -49,6 +49,10 @@
 #define ADC_MEM_PHASE_B                             ADC_MEM1        // Memory where Phase B BEMF will be stored
 #define ADC_MEM_PHASE_C                             ADC_MEM2        // Memory where Phase C BEMF will be stored
 
+#define ADC_WIN_TH                                  20                  // Comparation window threshold value -> Range = [-WIN_TH, WIN_TH]
+#define ADC_ALL_INT                                 0xFFFFFFFFFFFFFFFF  // All interruptions mask
+
+
 /****************************************************************************************************************************************************
  *      RTOS HANDLERS
  ****************************************************************************************************************************************************/
@@ -136,6 +140,7 @@ void hwiADCFx(UArg arg){
 }
 
 
+
 /****************************************************************************************************************************************************
  *      TASK
  ****************************************************************************************************************************************************/
@@ -196,63 +201,65 @@ void taskADCFx(UArg arg0, UArg arg1){
 /****************************************************************************************************************************************************
  *      FUNCTIONS
  ****************************************************************************************************************************************************/
-/*
- * ADCinit() configura l'ADC fent servir les funcions de la driverlib.
- * Nota: per fer-ho 100% RTOS, s'hauria de tornar a reescriure la part de l'ADC de la llibreria 'drivers'.
- */
+
+// Todo: Remove error detection when the ADC is fully implemented
 bool ADCinit(void)
 {
-    bool errorInit = true; // variable per portar control d'errors en la inicialitzacio
+    /* ADC initialization with DriverLib */
+    bool errorInit = true;                                          // variable per portar control d'errors en la inicialitzacio
 
-    MAP_ADC14_enableModule();        // posar en ON el modul ADC (alimentar-lo)
-    MAP_ADC14_disableConversion();   // deshabilitar la conversio: necessari per fer modificar els registres de control de l'ADC
+    MAP_ADC14_enableModule();                                       // Enable ADC - turn on ADC
+    MAP_ADC14_disableConversion();                                  // No conversion - needed for configuration
 
-    //configuracio clock ADC: es de 25 MHz aprox
-    errorInit = MAP_ADC14_initModule(ADC_CLOCKSOURCE_ADCOSC, //25 MHZ aprox
-                                     ADC_PREDIVIDER_1,       // predivider a 1
-                                     ADC_DIVIDER_1,          // divider a 1
-                                     ADC_NOROUTE);           //no associem senyals interns
-    if(!errorInit){return errorInit;} // check error
+    /* ADC clock */
+    errorInit = MAP_ADC14_initModule(
+                                        ADC_CLOCKSOURCE_ADCOSC,     // Internal oscillator - 25MHz
+                                        ADC_PREDIVIDER_1,           // Don't divide the clock signal
+                                        ADC_DIVIDER_1,              // Don't divide the clock signal
+                                        ADC_NOROUTE                 // No internal readings (internal signals of the uC)
+                                    );
 
-    // configuracio del tipus d'alimentacio per l'ADC
-    errorInit = MAP_ADC14_setPowerMode(ADC_UNRESTRICTED_POWER_MODE); // full power
+    if(!errorInit){return errorInit;}                               // check error
+
+    /* Power mode */
+    errorInit = MAP_ADC14_setPowerMode(ADC_UNRESTRICTED_POWER_MODE);// Full power mode
     if(!errorInit){return errorInit;} //check error
 
-    // bits de resolucio de l'ADC
-    MAP_ADC14_setResolution(ADC_14BIT); // no retorna res aquesta funcio
+    /* Resolution */
+    MAP_ADC14_setResolution(ADC_14BIT);                             // 14 bits of resolution (maximum resolution)
 
-    // format de les dades de l'ADC
-    errorInit = MAP_ADC14_setResultFormat(ADC_SIGNED_BINARY); // format sencer amb signe
+    /* Data type */
+    errorInit = MAP_ADC14_setResultFormat(ADC_SIGNED_BINARY);       // Use signed values
+    if(!errorInit){return errorInit;}                               //check error
+
+    /* Sample and Hold timing */
+    errorInit = MAP_ADC14_setSampleHoldTime(
+                                            ADC_PULSE_WIDTH_16,     // 16 cycles for MEM0-7 i MEM24-31
+                                            ADC_PULSE_WIDTH_16      // 16 cycles for MEM8 a MEM23
+                                            );
+
+    if(!errorInit){return errorInit;}                               //check error
+
+    /* ADC trigger */
+    errorInit = MAP_ADC14_setSampleHoldTrigger(
+                                                ADC_TRIGGER_SOURCE3,    // Use TA1_C1 (Reference signal - same timing of the PWM signals used for the motor)
+                                                false                   // Trigger conversion at the rising edge of the signal
+                                               );
+
+    /* Cycles iteration */
+    // Todo: try with automatic iteration
+    errorInit = MAP_ADC14_enableSampleTimer(ADC_MANUAL_ITERATION);      // Manualy trigger the next sample
     if(!errorInit){return errorInit;} //check error
 
-    // duracio del sample and hold en unitats de clk
-    errorInit = MAP_ADC14_setSampleHoldTime(ADC_PULSE_WIDTH_16,  // 16 cicles pels registres MEM0-7 i MEM24-31
-                                            ADC_PULSE_WIDTH_16); // 16 cicles pels registres MEM8 a MEM23
-    if(!errorInit){return errorInit;} //check error
+    /* Comparation Window */
+    errorInit = MAP_ADC14_setComparatorWindowValue(
+                                                    ADC_COMP_WINDOW0,   // Configure Comparation Window 0
+                                                    -ADC_WIN_TH,        // Lower edge of the window
+                                                    ADC_WIN_TH          // Upper edge of the window
+                                                   );
+    if(!errorInit){return errorInit;}                                   //check error
 
-    // senyal de trigger per realitzar la conversio a l'ADC
-    errorInit = MAP_ADC14_setSampleHoldTrigger(ADC_TRIGGER_SOURCE3, //TA1_C1
-                                               false);              //rising edge
-    // la conversio s'associa al flanc de l'ADC (en mode Automatic, l'ADC inicia una nova conversio
-    // just en acabar la conversio actual i sense esperar un nou trigger; es a dir, el trigger dispara
-    // l'inici de la conversio automatica).
-
-    errorInit = MAP_ADC14_enableSampleTimer(ADC_MANUAL_ITERATION/*ADC_AUTOMATIC_ITERATION*/);
-    if(!errorInit){return errorInit;} //check error
-
-    if(!errorInit){return errorInit;} //check error
-    // limits baix i alt de la finestra de comparacio 0 (hi ha tambe una finestra 1)
-    errorInit = MAP_ADC14_setComparatorWindowValue(ADC_COMP_WINDOW0,  //configurem el comparador 0
-                                                   -20,              // valor baix finestra (int16)
-                                                   20);              // valor alt finestra
-    if(!errorInit){return errorInit;} //check error
-
-    MAP_ADC14_disableInterrupt(0xFFFFFFFFFFFFFFFF);  // deshabilitem totes les interrupcions
-//    MAP_ADC14_enableInterrupt(ADC_HI_INT);           // habilitem la interrupcio que assenyala que
-                                                     // el valor de l'ADC esta per sobre del
-                                                     // valor alt de la finestra de comparacio                                                      */
-
-
+    MAP_ADC14_disableInterrupt(ADC_ALL_INT);                            // Disable all interrupts
 
     /* BEMF Phase A */
     MAP_GPIO_setAsPeripheralModuleFunctionInputPin(
@@ -267,7 +274,6 @@ bool ADCinit(void)
                                                     ADC_INPUT_A20,                  // P8.5 (PHASE_A BEMF)
                                                     ADC_DIFFERENTIAL_INPUTS         // Diff amb P8.4 (ADC_INPUT_A21)
                                                     );
-
 
     /* BEMF Phase B */
     MAP_GPIO_setAsPeripheralModuleFunctionInputPin(
@@ -297,33 +303,12 @@ bool ADCinit(void)
                                                     ADC_DIFFERENTIAL_INPUTS         // Diff amb P9.0 (ADC_INPUT_A17)
                                                     );
 
-
     if(!errorInit){return errorInit;} //check error
 
-    /*
-    // associem l'ADC0, mitjançant l'ADCMEM0, a la finestra de comparacio 0
-    errorInit = MAP_ADC14_enableComparatorWindow(ADC_MEM0,          //associa la finestra de comparacio a MEM0
-                                                 ADC_COMP_WINDOW0); //fem servir el comparador 0
-    if(!errorInit){return errorInit;} //check error
-    */
-
-    // neteja de flags d'interrupcio
-    MAP_ADC14_clearInterruptFlag (ADC_INT0 | ADC_INT1 | ADC_HI_INT | ADC_LO_INT | ADC_IN_INT);//netejar flag
-    // A partir d'aqui, s'ha d'iniciar la conversio; pero no la inciem fins que, a dins de la tasca
-    // productora, s'hagi configurat i engegat el TA1_1
-
-    // si fa falta, comprovem quines interrupcions tenim habilitades i quin es l'estat actual
-    // de les flags d'interrupcio (posar aqui un breakpoint en debug)
-    enableInts = ADC14_getEnabledInterruptStatus();
-    actualInts = ADC14_getInterruptStatus();
-
-
-    // Todo: Posar aixo a la inicialitzacio de la tasca del ADC
-    /* Enabling Interrupts */
-    MAP_Interrupt_enableInterrupt(INT_ADC14);
+    /* Interruptions */
+    MAP_ADC14_clearInterruptFlag (ADC_ALL_INT);                         // Clear all interruption flags
+    MAP_Interrupt_enableInterrupt(INT_ADC14);                           // Enable ADC14 interruptions
     MAP_Interrupt_enableMaster();
-    /* s'habilita la conversio de l'ADC: a partir d'aquest moment, l'ADC agafa dades al ritme del PWM*/
-    //MAP_ADC14_enableConversion();
 
     return errorInit;
 }
