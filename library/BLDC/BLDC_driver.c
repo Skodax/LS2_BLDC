@@ -194,8 +194,8 @@ void hwiPort3Fx(UArg arg){
 
     /* MKII Button 2 */
     if(P3->IFG & PORT_BIT_5){
-        GPIO_clearInt(MKII_BUTTON2_GPIO);                   // Clear interrupt flag
-        Swi_post(swiMotorToggleStatus);                     // Toggle motor status (enabled/disabled)
+        GPIO_clearInt(MKII_BUTTON2_GPIO);                                   // Clear interrupt flag
+        Swi_post(swiMotorToggleStatus);                                     // Toggle motor status (enabled/disabled)
     }
 }
 
@@ -204,23 +204,25 @@ void hwiPort5Fx(UArg arg){
 
     /* MKII Button 1 */
     if(P5->IFG & PORT_BIT_1){
-        GPIO_clearInt(MKII_BUTTON1_GPIO);                       // Clear interrupt flag
-        Swi_post(swiMotorStop);                                 // Stop the motor
+        GPIO_clearInt(MKII_BUTTON1_GPIO);                                   // Clear interrupt flag
+        Swi_post(swiMotorStop);                                             // Stop the motor
     }
 }
 
 /* Closed Loop Control timer */
 void hwiClcTimerFx(UArg arg){
-    Timer_A_clearCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);
 
+    /* Closed Loop Control - Phase change trigger */
+    Timer_A_clearCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);         // Clear interrupt flag
+    Event_post(eventPhaseChange, EVENT_CHANGE_PHASE);                       // Change phase (next one)
+
+    /* Debug */
     GPIO_write(BEMF_PHC_CLC_GPIO, 0);
-//    ttstop = Timestamp_get32();
-//    ttime = ttstop - ttstart;
 }
 
 /* Timer */
 void timerMotorControlOLFx(UArg arg){
-    Event_post(eventPhaseChange, EVENT_CHANGE_PHASE);           // Change phase (next one)
+    Event_post(eventPhaseChange, EVENT_CHANGE_PHASE);                       // Change phase (next one)
 }
 
 /* Clock - Acceleration */
@@ -297,8 +299,10 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
             ctrlType = MOTOR_CTR_OL;                                                // Set motor control to OL
             Mailbox_post(mbxDutyCycle, &dutyCycleRaw, BIOS_NO_WAIT);                // Send duty cycle to the motor
             Timer_stop(timerMotorControlOL);                                        // Stop OpenLoop control timer
+            Timer_A_stopTimer(CLC_TIMER);                                           // Stop CLC timer
+            Timer_A_disableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);       // Disable CLC timer interrupts
 
-            Event_post(eventPhaseChange, EVENT_PHASE_STOP);             // Cut power to the motor
+            Event_post(eventPhaseChange, EVENT_PHASE_STOP);                         // Cut power to the motor
 
             // Todo: Remove
             System_flush();
@@ -337,22 +341,25 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
 
                     /* Acceleration timer */
                     speed += 50;
-                    if(speed > MOTOR_OL_MAX_SPEED){
-                        speed = MOTOR_OL_MAX_SPEED;
-//                        Timer_stop(timerMotorAcc);
-                        Clock_stop(clockMotorAccelerator);
-
-                        // Todo: Remove -> Debug
-                        // Start sensing bemf
-
-                        //MAP_ADC14_configureSingleSampleMode(ADC_MEM0, true);
-//                        MAP_ADC14_enableConversion();
-                    }
 
 
                     /* Motor action */
                     if(!speed){
+
+                        /* Motor has no speed */
                         Swi_post(swiMotorStop);                                     // If speed is 0 then stop the motor
+
+                    } else if(speed > MOTOR_OL_MAX_SPEED){
+
+                        /* Open Loop max speed reached */
+                        speed = MOTOR_OL_MAX_SPEED;
+                        Clock_stop(clockMotorAccelerator);
+                        Timer_stop(timerMotorControlOL);
+
+                        /* Change to Closed Loop control */
+                        ctrlType = MOTOR_CTR_CL;
+                        Timer_A_enableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);
+
                     } else {
 
                         /* Convert to Timer period and Duty Cycle */
@@ -364,6 +371,10 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                         Timer_setPeriod(timerMotorControlOL, timerPeriod);          // Set timer period (set motor speed)
                         Timer_start(timerMotorControlOL);                           // Restart timer (with setPeriod timer automatically stops)
                     }
+                } else if(ctrlType == MOTOR_CTR_CL){
+
+                    /* Closed Loop control */
+
                 } else {
 
                     /* UNKNOWN MOTOR CONTROL TYPE */
@@ -418,9 +429,9 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
     }
 
     /* Closed Loop Control */
-    uint32_t tstart, tstop, time = 0;                                           // Timestamps store variables
     Timer_A_configureContinuousMode(CLC_TIMER, &clcTimerConfig);                // Timer configured in continous mode
     Timer_A_initCompare(CLC_TIMER, &clcCompareConfig);                          // Compare register for closed loop phase change interruption
+    Timer_A_disableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);           // Disable CCR CLC timer interrupts for proper OL control
     Interrupt_enableInterrupt(CLC_TIMER_INT);                                   // Enable timer's interruptions
 
 
@@ -459,6 +470,7 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
             confAdcBemf(phase);                                                     // Stop reading BEMF
 
             /* Closed loop */
+            // Todo: try if putting this into the motorCOntrol task
             Timer_A_stopTimer(CLC_TIMER);                                           // Stop timer
 
             /* BEMF Control Development*/
