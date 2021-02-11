@@ -239,7 +239,7 @@ void taskADCFx(UArg arg0, UArg arg1){
                 prevJoytick.y = joystick.y;
             }
 
-            /* Acceleration timer */
+            /* Motor Speed control */
 //          Mailbox_post(mbxMotorSpeed, &joystick.y, BIOS_NO_WAIT);                                     // Send the control speed to the motor
 
 
