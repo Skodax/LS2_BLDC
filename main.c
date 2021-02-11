@@ -77,7 +77,6 @@ int main()
     Board_init();
     GPIO_init();
     PWM_init();
-    //ADCBuf_init();
 
     bool error = true;
     error = ADCinit();

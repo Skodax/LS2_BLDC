@@ -240,7 +240,7 @@ void taskADCFx(UArg arg0, UArg arg1){
             }
 
             /* Motor Speed control */
-//          Mailbox_post(mbxMotorSpeed, &joystick.y, BIOS_NO_WAIT);                                     // Send the control speed to the motor
+            Mailbox_post(mbxMotorSpeed, &joystick.y, BIOS_NO_WAIT);                                     // Send the control speed to the motor
 
 
         }

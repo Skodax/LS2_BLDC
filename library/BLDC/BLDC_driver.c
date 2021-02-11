@@ -84,15 +84,13 @@
 
 /* Motor limits */
 #define MOTOR_OL_MAX_SPEED          1300 //2500            // Max speed with the MOTOR_MAX_DUTY
+#define MOTOR_CL_MIN_DUTY           360039055
 
 /* Closed loop control */
 #define CLC_TIMER                   TIMER_A3_BASE                           // Use timer A3
 #define CLC_TIMER_INT               INT_TA3_0                               // Timer's interruptions
 #define CLC_TIMER_CCR               TIMER_A_CAPTURECOMPARE_REGISTER_0       // Use CCRO for timer up mode
 #define CLC_TIMER_CCR_IE            TIMER_A_CCIE_CCR0_INTERRUPT_ENABLE      // Enable capture compare interruption
-#define CLC_TIME_SHIFT              8 //2                                       // Time for the clc timer is PhaseChangeTime/4 bc Timestap runs at 48MHz and the timer at 24MHz, also the time is half the time of the phase change
-
-uint32_t ttstart, ttstop, ttime;
 
 /* Closed Loop control timer */
 const Timer_A_ContinuousModeConfig clcTimerConfig =
@@ -126,7 +124,6 @@ extern Task_Handle taskPhaseChange;
 extern Task_Handle taskSpeedCalculator;
 
 extern Timer_Handle timerMotorControlOL;
-extern Clock_Handle clockMotorAccelerator;
 
 extern Event_Handle eventMotorControl;
 extern Event_Handle eventPhaseChange;
@@ -154,7 +151,6 @@ void hwiPort5Fx(UArg arg);
 void hwiClcTimerFx(UArg arg);
 
 void timerMotorControlOLFx(UArg arg);
-void clockMotorAcceleratorFx(UArg arg);
 
 void swiMotorStopFx(UArg arg1, UArg arg2);
 void swiMotorToggleStatusFx(UArg arg1, UArg arg2);
@@ -225,11 +221,6 @@ void timerMotorControlOLFx(UArg arg){
     Event_post(eventPhaseChange, EVENT_CHANGE_PHASE);                       // Change phase (next one)
 }
 
-/* Clock - Acceleration */
-void clockMotorAcceleratorFx(UArg arg){
-    Event_post(eventMotorControl, EVENT_MOTOR_MBX_SPEED);
-}
-
 /****************************************************************************************************************************************************
  *      SWI
  ****************************************************************************************************************************************************/
@@ -271,7 +262,7 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
     int32_t speed = 0;                                      // Motor stopped by default
     uint8_t ctrlType = MOTOR_CTR_OL;                        // Motor control Open Loop by default
     uint32_t timerPeriod = 0;                               // Timer period for OL control
-    uint32_t dutyCycleRaw = 0;                              // Duty cycle for CL control
+    uint32_t dutyCycleRaw = 0;                              // Duty cycle for applied to the PWM signals
     uint8_t motorEnabeled = MOTOR_DISABLED;                 // Motor disabled by default
     motorStatusLED(motorEnabeled);                          // Turn on Red/Green LEDs depending on the motor status
 
@@ -304,9 +295,6 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
 
             Event_post(eventPhaseChange, EVENT_PHASE_STOP);                         // Cut power to the motor
 
-            // Todo: Remove
-            System_flush();
-
         } else {
 
             if(events & EVENT_MOTOR_TOGGLE_STATUS){
@@ -314,15 +302,6 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                 /* Toggle motor enabled status */
                 motorEnabeled = !motorEnabeled;                                     // Toggle status
                 motorStatusLED(motorEnabeled);                                      // Turn on Red/Green LEDs depending on the motor status
-
-                /* Acceleration timer */
-                if(motorEnabeled){
-                    speed = 0;
-                    Clock_start(clockMotorAccelerator);
-
-                } else {
-                    Clock_stop(clockMotorAccelerator);
-                }
 
                 if(!motorEnabeled){
                     Swi_post(swiMotorStop);                                         // If disable motor then stop the motor
@@ -333,27 +312,15 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                 if(ctrlType == MOTOR_CTR_OL){
 
                     /* Open Loop control */
-                    /*
-                    speed += (int32_t) (joystick);///10);                               // Accelerate depending on the joysticks position
-                    if(speed < 0){speed = 0;}                                           // Minimum speed -> 0 RPM
-                    else if(speed > MOTOR_OL_MAX_SPEED){speed = MOTOR_OL_MAX_SPEED;}    // Maximum speed in OL control
-                    */
+                    speed += (int32_t) (joystick);                                  // Accelerate depending on the joysticks position
 
-                    /* Acceleration timer */
-                    speed += 50;
-
-
-                    /* Motor action */
-                    if(!speed){
-
-                        /* Motor has no speed */
+                    if(speed <= 0){
+                        speed = 0;                                                  // Minimum speed -> 0 RPM
                         Swi_post(swiMotorStop);                                     // If speed is 0 then stop the motor
-
                     } else if(speed > MOTOR_OL_MAX_SPEED){
 
                         /* Open Loop max speed reached */
                         speed = MOTOR_OL_MAX_SPEED;
-                        Clock_stop(clockMotorAccelerator);
                         Timer_stop(timerMotorControlOL);
 
                         /* Change to Closed Loop control */
@@ -374,6 +341,22 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                 } else if(ctrlType == MOTOR_CTR_CL){
 
                     /* Closed Loop control */
+                    dutyCycleRaw += (joystick << 20);
+
+                    if(dutyCycleRaw < MOTOR_CL_MIN_DUTY){
+
+                        /* Closed Loop min speed reached */
+                        speed = 1100;
+
+                        /* Change to Closed Loop control */
+                        ctrlType = MOTOR_CTR_OL;
+                        Timer_A_disableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);
+
+                        Event_post(eventMotorControl, EVENT_MOTOR_MBX_SPEED);
+
+                    } else {
+                        Mailbox_post(mbxDutyCycle, &dutyCycleRaw, BIOS_NO_WAIT);        // Send Duty Cycle to the actual motor drive task (taskPhaseChange)
+                    }
 
                 } else {
 
