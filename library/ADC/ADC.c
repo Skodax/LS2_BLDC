@@ -42,6 +42,7 @@
 /* User libraries */
 #include "../utilities/utilities.h"
 #include "../BLDC/BLDC_driver.h"                            // Used for trigger the timer for phase change on BEMF zero cross on closed loop control
+#include "../LCD/LCD.h"                                     // Used to change the page of the LCD with joystick actions
 
 /****************************************************************************************************************************************************
  *      MACROS
@@ -71,8 +72,8 @@
  *      JOYSTICK PARAMETERS
  ****************************************************************************************************************************************************/
 
-const Range_unsigned rangeX = {-31488, 31424};              // Experimental edges of the X axis
-const Range_unsigned rangeY = {-32760, 32664};              // Experimental edges of the Y axis
+const Range rangeX = {-31488, 31424};              // Experimental edges of the X axis
+const Range rangeY = {-32760, 32664};              // Experimental edges of the Y axis
 
 const Range idleZone = {-10, 10};                           // Joystick zone that is considered idle (no user action)
 const Point idlePoint = {0, 0};                             // Joystick point considered idle (each point in the idle zone will be converted to idlePoint)
@@ -185,9 +186,11 @@ void clockJoystickReadFx(UArg arg0){
  ****************************************************************************************************************************************************/
 
 void taskADCFx(UArg arg0, UArg arg1){
-
+    /* Joystick data */
     Point joystick = {0, 0};
+    Point prevJoytick = {0, 0};
 
+    /* Debug */
     for(i = 0; i < PHASE_A_BUFF_LEN; i++){
         PhaseA_buff[i] = 0;
         PhaseB_buff[i] = 0;
@@ -204,7 +207,11 @@ void taskADCFx(UArg arg0, UArg arg1){
 
     j = 0;
 
+    /* Events */
     uint32_t events = 0;
+
+    /* Joystick events parameters */
+    uint8_t eventPageChangeBlocked = JOYSTICK_EVENT_BLOCKED;
 
     while(1){
 
@@ -212,7 +219,7 @@ void taskADCFx(UArg arg0, UArg arg1){
 
         if(events & EVENT_JOYSTICK_READ){
 
-            /* Retrieve conversion */
+            /* Get conversion */
             joystick.x = ADC14_getResult(ADC_MEM_JOYSTICK_X);
             joystick.y = ADC14_getResult(ADC_MEM_JOYSTICK_Y);
 
@@ -220,6 +227,21 @@ void taskADCFx(UArg arg0, UArg arg1){
             joystick.x = map(joystick.x, (Range *) &rangeX, (Range *) &joystickNormalized);           // Transform X results into comprehensible range
             joystick.y = map(joystick.y, (Range *) &rangeY, (Range *) &joystickNormalized);           // Transform Y results into comprehensible range
             discretizePoint(&joystick, (Range *) &idleZone, (Range *) &idleZone, (Point *) &idlePoint); // Make a wide zone in the center of the joystick that will be considered as idelPoint
+
+
+            /* Joystick events */
+            joystickEventsChangePage(&joystick, &eventPageChangeBlocked);                               // Event trigger for LCD page change
+
+            /* Send data */
+            if((prevJoytick.x != joystick.x) || (prevJoytick.y != joystick.y)){
+                Mailbox_post(mbxJoystick, &joystick, BIOS_NO_WAIT);                                     // If there's new data then send it
+                prevJoytick.x = joystick.x;
+                prevJoytick.y = joystick.y;
+            }
+
+            /* Acceleration timer */
+//          Mailbox_post(mbxMotorSpeed, &joystick.y, BIOS_NO_WAIT);                                     // Send the control speed to the motor
+
 
         }
 
@@ -504,4 +526,28 @@ void confAdcBemf(uint8_t phase){
     MAP_ADC14_enableConversion();                                                       // Enable ADC conversion (triggered by Timer A1)
 
 
+}
+
+void joystickEventsChangePage(Point *joystick, uint8_t *eventPageBlocked){
+
+    /* Trigger several events depending on the joystick's actions */
+    /* LCD Page change */
+    if(*eventPageBlocked){
+
+        if((joystick->x > -JOYSTICK_PAGE_EVENT_THRESHOLD) && (joystick->x < JOYSTICK_PAGE_EVENT_THRESHOLD)){
+            *eventPageBlocked = JOYSTICK_EVENT_UNBLOCKED;                       // Unblock event when the joystick's position out of the trigger zone
+        }
+    } else {
+
+        if(joystick->x > JOYSTICK_PAGE_EVENT_THRESHOLD){
+
+            Event_post(eventLCD, EVENT_NEXT_PAGE);                              // Trigger next page event
+            *eventPageBlocked = JOYSTICK_EVENT_BLOCKED;                         // Block event until joystick get out of the trigger zone
+
+        } else if(joystick->x < -JOYSTICK_PAGE_EVENT_THRESHOLD){
+
+            Event_post(eventLCD, EVENT_PREVIOUS_PAGE);                          // Trigger previous page event
+            *eventPageBlocked = JOYSTICK_EVENT_BLOCKED;                         // Block event until joystick get out of the trigger zone
+        }
+    }
 }

@@ -155,31 +155,7 @@ void taskJoystickReadFx(UArg arg1, UArg arg2){
  *      FUNCTIONS
  ****************************************************************************************************************************************************/
 
-void joystickEventsChangePage(Point *joystick, uint8_t *eventPageBlocked){
 
-    /* Trigger several events depending on the joystick's actions */
-
-    /* LCD Page change */
-//    if(*eventPageBlocked){
-//
-//        if((joystick->x > -JOYSTICK_PAGE_EVENT_THRESHOLD) && (joystick->x < JOYSTICK_PAGE_EVENT_THRESHOLD)){
-//            *eventPageBlocked = JOYSTICK_EVENT_UNBLOCKED;                       // Unblock event when the joystick's position out of the trigger zone
-//        }
-//
-//    } else {
-//
-//        if(joystick->x > JOYSTICK_PAGE_EVENT_THRESHOLD){
-//
-//            Event_post(eventLCD, EVENT_NEXT_PAGE);                              // Trigger next page event
-//            *eventPageBlocked = JOYSTICK_EVENT_BLOCKED;                         // Block event until joystick get out of the trigger zone
-//
-//        } else if(joystick->x < -JOYSTICK_PAGE_EVENT_THRESHOLD){
-//
-//            Event_post(eventLCD, EVENT_PREVIOUS_PAGE);                          // Trigger previous page event
-//            *eventPageBlocked = JOYSTICK_EVENT_BLOCKED;                         // Block event until joystick get out of the trigger zone
-//        }
-//    }
-}
 
 /*
  * DEPRECATED CODE

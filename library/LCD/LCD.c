@@ -216,22 +216,22 @@ void taskLcdFx(UArg arg0, UArg arg1){
       while(1){
 
           /* Wait only for events needed by the current page */
-          events = Event_pend(eventLCD, Event_Id_NONE, eventOrMask, 100000);
+          events = Event_pend(eventLCD, Event_Id_NONE, eventOrMask, 100);                               // If Clock period is changed timeout need to be changed
 
           /* Page flow control */
           if(events & EVENT_NEXT_PAGE){
-              page++;                                                                                           // Next page when Joystick is pushed to the right
-              page %= PAGE_COUNT;                                                                               // Cycle trough pages
-              break;                                                                                            // Break while loop (redraw entire page)
+              page++;                                                                                   // Next page when Joystick is pushed to the right
+              page %= PAGE_COUNT;                                                                       // Cycle trough pages
+              break;                                                                                    // Break while loop (redraw entire page)
 
           } else if(events & EVENT_PREVIOUS_PAGE){
-              page--;                                                                                           // Previous page when Joystick is pushed to the right
-              if(page < 0){page = PAGE_COUNT-1;}                                                                // Cycle trough pages
-              break;                                                                                            // Break while loop (redraw entire page)
+              page--;                                                                                   // Previous page when Joystick is pushed to the right
+              if(page < 0){page = PAGE_COUNT-1;}                                                        // Cycle trough pages
+              break;                                                                                    // Break while loop (redraw entire page)
           }
 
-          Mailbox_pend(mbxTheoricalSpeed, &theroricalSpeed, BIOS_NO_WAIT);                         // Get theorical speed
-          Mailbox_pend(mbxJoystick, &joystick, BIOS_NO_WAIT);                                     // Get joystick values
+          Mailbox_pend(mbxTheoricalSpeed, &theroricalSpeed, BIOS_NO_WAIT);                              // Get theorical speed
+          Mailbox_pend(mbxJoystick, &joystick, BIOS_NO_WAIT);                                           // Get joystick values
 
           /* Page refresh */
           switch (page) {
