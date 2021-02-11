@@ -8,8 +8,6 @@
 /**
  * Import the modules used in this configuration.
  */
-const ADCBuf  = scripting.addModule("/ti/drivers/ADCBuf", {}, false);
-const ADCBuf1 = ADCBuf.addInstance();
 const GPIO    = scripting.addModule("/ti/drivers/GPIO", {}, false);
 const GPIO1   = GPIO.addInstance();
 const GPIO2   = GPIO.addInstance();
@@ -23,7 +21,7 @@ const GPIO9   = GPIO.addInstance();
 const GPIO10  = GPIO.addInstance();
 const GPIO11  = GPIO.addInstance();
 const GPIO12  = GPIO.addInstance();
-const GPIO17  = GPIO.addInstance();
+const GPIO13  = GPIO.addInstance();
 const PWM     = scripting.addModule("/ti/drivers/PWM", {}, false);
 const PWM1    = PWM.addInstance();
 const PWM2    = PWM.addInstance();
@@ -43,19 +41,6 @@ const LED2    = LED.addInstance();
 /**
  * Write custom configuration values to the imported modules.
  */
-ADCBuf1.$name                             = "JOYSTICK_ADC0";
-ADCBuf1.channels                          = 2;
-ADCBuf1.clockSource                       = "SMCLK";
-ADCBuf1.triggerSource                     = "Auto";
-ADCBuf1.enableDMA                         = false;
-ADCBuf1.adcBufChannel0.$name              = "_X";
-ADCBuf1.adcBufChannel0.adc.$assign        = "ADC14";
-ADCBuf1.adcBufChannel0.adc.adcPin.$assign = "boosterpack.2";
-ADCBuf1.adcBufChannel1.$name              = "_Y";
-ADCBuf1.adcBufChannel1.adc.$assign        = "ADC14";
-ADCBuf1.adcBufChannel1.adc.adcPin.$assign = "boosterpack.26";
-ADCBuf1.adc.$assign                       = "ADC14";
-
 GPIO1.$name              = "PHASE_A_LIN";
 GPIO1.mode               = "Output";
 GPIO1.initialOutputState = "High";
@@ -109,9 +94,9 @@ GPIO12.$name           = "BEMF_PHC_GPIO";
 GPIO12.mode            = "Output";
 GPIO12.gpioPin.$assign = "expansion.10";
 
-GPIO17.$name           = "BEMF_PHC_CLC_GPIO";
-GPIO17.mode            = "Output";
-GPIO17.gpioPin.$assign = "expansion.14";
+GPIO13.$name           = "BEMF_PHC_CLC_GPIO";
+GPIO13.mode            = "Output";
+GPIO13.gpioPin.$assign = "expansion.14";
 
 PWM1.$name                = "PHASE_A_HIN";
 PWM1.timer.$assign        = "Timer_A1";

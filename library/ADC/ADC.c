@@ -24,9 +24,9 @@
 #include <ti/sysbios/hal/Hwi.h>
 #include <ti/sysbios/knl/Swi.h>
 #include <ti/sysbios/knl/Task.h>
-#include <ti/sysbios/knl/Semaphore.h>
+#include <ti/sysbios/knl/Clock.h>
 #include <ti/sysbios/knl/Event.h>
-#include <ti/sysbios/knl/Queue.h>
+#include <ti/sysbios/knl/Mailbox.h>
 
 /* Drivers header files */
 #include "ti_drivers_config.h"
@@ -40,11 +40,14 @@
 #include <ti/drivers/Board.h>
 
 /* User libraries */
+#include "../utilities/utilities.h"
 #include "../BLDC/BLDC_driver.h"                            // Used for trigger the timer for phase change on BEMF zero cross on closed loop control
 
 /****************************************************************************************************************************************************
  *      MACROS
  ****************************************************************************************************************************************************/
+
+/* ADC */
 #define ADC_MEM_PHASE_A                             ADC_MEM0            // Memory where Phase A BEMF will be stored
 #define ADC_MEM_PHASE_B                             ADC_MEM1            // Memory where Phase B BEMF will be stored
 #define ADC_MEM_PHASE_C                             ADC_MEM2            // Memory where Phase C BEMF will be stored
@@ -57,6 +60,22 @@
 #define ADC_WIN_TH                                  20                  // Comparation window threshold value -> Range = [-WIN_TH, WIN_TH]
 #define ADC_ALL_INT                                 0xFFFFFFFFFFFFFFFF  // All interruptions mask
 
+/* Events */
+#define EVENT_JOYSTICK_READ                         Event_Id_00         // Retrieve joystick reading
+
+/* Joystick Events */
+#define JOYSTICK_EVENT_BLOCKED                              1   // Don't trigger joytick event
+#define JOYSTICK_EVENT_UNBLOCKED                            0   // Trigger joystick event
+
+/****************************************************************************************************************************************************
+ *      JOYSTICK PARAMETERS
+ ****************************************************************************************************************************************************/
+
+const Range_unsigned rangeX = {114, 16172};                 // Experimental edges of the X axis
+const Range_unsigned rangeY = {0, 16380};                   // Experimental edges of the Y axis
+
+const Range idleZone = {-10, 10};                           // Joystick zone that is considered idle (no user action)
+const Point idlePoint = {0, 0};                             // Joystick point considered idle (each point in the idle zone will be converted to idlePoint)
 
 /****************************************************************************************************************************************************
  *      RTOS HANDLERS
@@ -66,13 +85,21 @@ extern Swi_Handle swiBemfZeroCross;
 extern Task_Handle taskADC;                 // la tasca productora de l'ADC
 extern Event_Handle eventADC;
 
+extern Clock_Handle clockJoystickRead;
+extern Event_Handle eventLCD;
+extern Mailbox_Handle mbxJoystick;
+extern Mailbox_Handle mbxMotorSpeed;
+
+
 /****************************************************************************************************************************************************
  *      FUNCTION DECLARATION
  ****************************************************************************************************************************************************/
 
 void hwiADCFx(UArg arg);                    // Executed when ADC has a new reading or a window interruption
+void clockJoystickReadFx(UArg arg0);        // Trigger joystick reading
 void taskADCFx(UArg arg0, UArg arg1);       // Data depuration comeing from the ADC
 bool ADCinit(void);                         // ADC configuration with driverlib
+void joystickEventsChangePage(Point *joystick, uint8_t *eventPageBlocked);
 
 /****************************************************************************************************************************************************
  *      GLOBALS
@@ -100,11 +127,11 @@ uint16_t j = 0;
 int16_t ZeroCross_buff[ZERO_CROSS_BUFF_LEN];
 uint32_t ZeroCross_time[ZERO_CROSS_BUFF_LEN];
 
-#define EVENT_PHASE             Event_Id_00
-#define EVENT_ZERO_CROSS_UP     Event_Id_01
-#define EVENT_ZERO_CROSS_DOWN   Event_Id_02
-#define EVENT_JOY_X             Event_Id_03
-#define EVENT_JOY_Y             Event_Id_04
+#define EVENT_PHASE             Event_Id_01
+#define EVENT_ZERO_CROSS_UP     Event_Id_02
+#define EVENT_ZERO_CROSS_DOWN   Event_Id_03
+#define EVENT_JOY_X             Event_Id_04
+#define EVENT_JOY_Y             Event_Id_05
 
 /****************************************************************************************************************************************************
  *      HWI
@@ -141,18 +168,17 @@ void hwiADCFx(UArg arg){
     if(status  & enabled & ADC_INT0){
         Event_post(eventADC, EVENT_PHASE);
     }
-    if(status & enabled & ADC_INT3){
-        Event_post(eventADC, EVENT_JOY_X);
-    }
-    if(status & enabled & ADC_INT4){
-        Event_post(eventADC, EVENT_JOY_Y);
-    }
 
     /* Clear interrupt flags */
     MAP_ADC14_clearInterruptFlag(status & enabled);
 }
 
-
+/****************************************************************************************************************************************************
+ *      SWI
+ ****************************************************************************************************************************************************/
+void clockJoystickReadFx(UArg arg0){
+    Event_post(eventADC, EVENT_JOYSTICK_READ);
+}
 
 /****************************************************************************************************************************************************
  *      TASK
@@ -160,7 +186,7 @@ void hwiADCFx(UArg arg){
 
 void taskADCFx(UArg arg0, UArg arg1){
 
-    int16_t joyX, joyY = 0;
+    Point joystick = {0, 0};
 
     for(i = 0; i < PHASE_A_BUFF_LEN; i++){
         PhaseA_buff[i] = 0;
@@ -182,8 +208,12 @@ void taskADCFx(UArg arg0, UArg arg1){
 
     while(1){
 
-        events = Event_pend(eventADC, Event_Id_NONE, EVENT_PHASE | EVENT_ZERO_CROSS_DOWN | EVENT_ZERO_CROSS_UP | EVENT_JOY_X | EVENT_JOY_Y, BIOS_WAIT_FOREVER);
-        //Semaphore_pend(semADCSample, BIOS_WAIT_FOREVER);
+        events = Event_pend(eventADC, Event_Id_NONE, EVENT_JOYSTICK_READ | EVENT_PHASE | EVENT_ZERO_CROSS_DOWN | EVENT_ZERO_CROSS_UP, BIOS_WAIT_FOREVER);
+
+        if(events & EVENT_JOYSTICK_READ){
+            joystick.x = ADC14_getResult(ADC_MEM_JOYSTICK_X);
+            joystick.y = ADC14_getResult(ADC_MEM_JOYSTICK_Y);
+        }
 
         if(events & EVENT_PHASE){
 
@@ -208,17 +238,7 @@ void taskADCFx(UArg arg0, UArg arg1){
             j++;
             if(j >= ZERO_CROSS_BUFF_LEN){j = 0;}
         }
-
-        if(events & EVENT_JOY_X){
-            joyX = ADC14_getResult(ADC_MEM_JOYSTICK_X);
-        }
-
-        if(events & EVENT_JOY_X){
-            joyY = ADC14_getResult(ADC_MEM_JOYSTICK_Y);
-        }
-
     }
-
 }
 
 /****************************************************************************************************************************************************
@@ -361,7 +381,7 @@ bool ADCinit(void)
     MAP_ADC14_clearInterruptFlag (ADC_ALL_INT);                                     // Clear all interruption flags
 
     /* Debug */
-    ADC14_enableInterrupt(ADC_INT0 | ADC_INT3 | ADC_INT4);
+    ADC14_enableInterrupt(ADC_INT0);
     ADC14_configureMultiSequenceMode(ADC_SEQ_ST_ADD, ADC_SEQ_SP_ADD, true);
 
     MAP_Interrupt_enableInterrupt(INT_ADC14);                                       // Enable ADC14 interruptions
@@ -465,7 +485,6 @@ void confAdcBemf(uint8_t phase){
             MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_C);                         // Disable comparison window on the phase signal
             MAP_ADC14_disableInterrupt(ADC_HI_INT | ADC_LO_INT);                        // On motor stop the comparison window is disabled
 //            MAP_ADC14_disableConversion();
-            return;
     }
 
     /* Debug */

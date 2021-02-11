@@ -48,45 +48,21 @@
 /* ADC parameters */
 #define SAMPLE_BUFF_SIZE                                    1   // Number of adc conversion per sample
 
-/* Joystick Events */
-#define JOYSTICK_EVENT_BLOCKED                              1   // Don't trigger joytick event
-#define JOYSTICK_EVENT_UNBLOCKED                            0   // Trigger joystick event
 
 /****************************************************************************************************************************************************
  *      RTOS HANDLERS
  ****************************************************************************************************************************************************/
 extern Task_Handle taskJoystickRead;
-extern Clock_Handle clockJoystickRead;
-extern Semaphore_Handle semJoystickRead;
-extern Event_Handle eventLCD;
-extern Mailbox_Handle mbxJoystick;
-extern Mailbox_Handle mbxMotorSpeed;
-
-/****************************************************************************************************************************************************
- *      JOYSTICK PARAMETERS
- ****************************************************************************************************************************************************/
 
 
-const Range_unsigned rangeX = {114, 16172};                 // Experimental edges of the X axis
-const Range_unsigned rangeY = {0, 16380};                   // Experimental edges of the Y axis
-
-//const Range joystickNormalized = {100, -100};               // Joystick axis range normalized. The range is inverted to correct the MKII inversion
-const Range idleZone = {-10, 10};                           // Joystick zone that is considered idle (no user action)
-const Point idlePoint = {0, 0};                             // Joystick point considered idle (each point in the idle zone will be converted to idlePoint)
 
 /****************************************************************************************************************************************************
  *      FUNCTION DECLARATION
  ****************************************************************************************************************************************************/
 void taskJoystickReadFx(UArg arg1, UArg arg2);
-void clockJoystickReadFx(UArg arg0);
-void joystickEventsChangePage(Point *joystick, uint8_t *eventPageBlocked);
 
-/****************************************************************************************************************************************************
- *      SWI
- ****************************************************************************************************************************************************/
-void clockJoystickReadFx(UArg arg0){
-//    Semaphore_post(semJoystickRead);
-}
+
+
 
 /****************************************************************************************************************************************************
  *      TASK
@@ -184,25 +160,25 @@ void joystickEventsChangePage(Point *joystick, uint8_t *eventPageBlocked){
     /* Trigger several events depending on the joystick's actions */
 
     /* LCD Page change */
-    if(*eventPageBlocked){
-
-        if((joystick->x > -JOYSTICK_PAGE_EVENT_THRESHOLD) && (joystick->x < JOYSTICK_PAGE_EVENT_THRESHOLD)){
-            *eventPageBlocked = JOYSTICK_EVENT_UNBLOCKED;                       // Unblock event when the joystick's position out of the trigger zone
-        }
-
-    } else {
-
-        if(joystick->x > JOYSTICK_PAGE_EVENT_THRESHOLD){
-
-            Event_post(eventLCD, EVENT_NEXT_PAGE);                              // Trigger next page event
-            *eventPageBlocked = JOYSTICK_EVENT_BLOCKED;                         // Block event until joystick get out of the trigger zone
-
-        } else if(joystick->x < -JOYSTICK_PAGE_EVENT_THRESHOLD){
-
-            Event_post(eventLCD, EVENT_PREVIOUS_PAGE);                          // Trigger previous page event
-            *eventPageBlocked = JOYSTICK_EVENT_BLOCKED;                         // Block event until joystick get out of the trigger zone
-        }
-    }
+//    if(*eventPageBlocked){
+//
+//        if((joystick->x > -JOYSTICK_PAGE_EVENT_THRESHOLD) && (joystick->x < JOYSTICK_PAGE_EVENT_THRESHOLD)){
+//            *eventPageBlocked = JOYSTICK_EVENT_UNBLOCKED;                       // Unblock event when the joystick's position out of the trigger zone
+//        }
+//
+//    } else {
+//
+//        if(joystick->x > JOYSTICK_PAGE_EVENT_THRESHOLD){
+//
+//            Event_post(eventLCD, EVENT_NEXT_PAGE);                              // Trigger next page event
+//            *eventPageBlocked = JOYSTICK_EVENT_BLOCKED;                         // Block event until joystick get out of the trigger zone
+//
+//        } else if(joystick->x < -JOYSTICK_PAGE_EVENT_THRESHOLD){
+//
+//            Event_post(eventLCD, EVENT_PREVIOUS_PAGE);                          // Trigger previous page event
+//            *eventPageBlocked = JOYSTICK_EVENT_BLOCKED;                         // Block event until joystick get out of the trigger zone
+//        }
+//    }
 }
 
 /*
