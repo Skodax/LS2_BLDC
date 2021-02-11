@@ -71,8 +71,8 @@
  *      JOYSTICK PARAMETERS
  ****************************************************************************************************************************************************/
 
-const Range_unsigned rangeX = {114, 16172};                 // Experimental edges of the X axis
-const Range_unsigned rangeY = {0, 16380};                   // Experimental edges of the Y axis
+const Range_unsigned rangeX = {-31488, 31424};              // Experimental edges of the X axis
+const Range_unsigned rangeY = {-32760, 32664};              // Experimental edges of the Y axis
 
 const Range idleZone = {-10, 10};                           // Joystick zone that is considered idle (no user action)
 const Point idlePoint = {0, 0};                             // Joystick point considered idle (each point in the idle zone will be converted to idlePoint)
@@ -211,8 +211,16 @@ void taskADCFx(UArg arg0, UArg arg1){
         events = Event_pend(eventADC, Event_Id_NONE, EVENT_JOYSTICK_READ | EVENT_PHASE | EVENT_ZERO_CROSS_DOWN | EVENT_ZERO_CROSS_UP, BIOS_WAIT_FOREVER);
 
         if(events & EVENT_JOYSTICK_READ){
+
+            /* Retrieve conversion */
             joystick.x = ADC14_getResult(ADC_MEM_JOYSTICK_X);
             joystick.y = ADC14_getResult(ADC_MEM_JOYSTICK_Y);
+
+            /* Result normalization */
+            joystick.x = map(joystick.x, (Range *) &rangeX, (Range *) &joystickNormalized);           // Transform X results into comprehensible range
+            joystick.y = map(joystick.y, (Range *) &rangeY, (Range *) &joystickNormalized);           // Transform Y results into comprehensible range
+            discretizePoint(&joystick, (Range *) &idleZone, (Range *) &idleZone, (Point *) &idlePoint); // Make a wide zone in the center of the joystick that will be considered as idelPoint
+
         }
 
         if(events & EVENT_PHASE){
