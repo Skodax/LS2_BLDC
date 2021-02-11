@@ -45,9 +45,14 @@
 /****************************************************************************************************************************************************
  *      MACROS
  ****************************************************************************************************************************************************/
-#define ADC_MEM_PHASE_A                             ADC_MEM0        // Memory where Phase A BEMF will be stored
-#define ADC_MEM_PHASE_B                             ADC_MEM1        // Memory where Phase B BEMF will be stored
-#define ADC_MEM_PHASE_C                             ADC_MEM2        // Memory where Phase C BEMF will be stored
+#define ADC_MEM_PHASE_A                             ADC_MEM0            // Memory where Phase A BEMF will be stored
+#define ADC_MEM_PHASE_B                             ADC_MEM1            // Memory where Phase B BEMF will be stored
+#define ADC_MEM_PHASE_C                             ADC_MEM2            // Memory where Phase C BEMF will be stored
+#define ADC_MEM_JOYSTICK_X                          ADC_MEM3            // Memory where Joystick X axis value will be stored
+#define ADC_MEM_JOYSTICK_Y                          ADC_MEM4            // Memory where Joystick Y axis value will be stored
+
+#define ADC_SEQ_ST_ADD                              ADC_MEM_PHASE_A     // Conversion sequence start address
+#define ADC_SEQ_SP_ADD                              ADC_MEM_JOYSTICK_Y  // Conversion sequence stop address
 
 #define ADC_WIN_TH                                  20                  // Comparation window threshold value -> Range = [-WIN_TH, WIN_TH]
 #define ADC_ALL_INT                                 0xFFFFFFFFFFFFFFFF  // All interruptions mask
@@ -98,6 +103,8 @@ uint32_t ZeroCross_time[ZERO_CROSS_BUFF_LEN];
 #define EVENT_PHASE             Event_Id_00
 #define EVENT_ZERO_CROSS_UP     Event_Id_01
 #define EVENT_ZERO_CROSS_DOWN   Event_Id_02
+#define EVENT_JOY_X             Event_Id_03
+#define EVENT_JOY_Y             Event_Id_04
 
 /****************************************************************************************************************************************************
  *      HWI
@@ -134,6 +141,12 @@ void hwiADCFx(UArg arg){
     if(status  & enabled & ADC_INT0){
         Event_post(eventADC, EVENT_PHASE);
     }
+    if(status & enabled & ADC_INT3){
+        Event_post(eventADC, EVENT_JOY_X);
+    }
+    if(status & enabled & ADC_INT4){
+        Event_post(eventADC, EVENT_JOY_Y);
+    }
 
     /* Clear interrupt flags */
     MAP_ADC14_clearInterruptFlag(status & enabled);
@@ -146,6 +159,8 @@ void hwiADCFx(UArg arg){
  ****************************************************************************************************************************************************/
 
 void taskADCFx(UArg arg0, UArg arg1){
+
+    int16_t joyX, joyY = 0;
 
     for(i = 0; i < PHASE_A_BUFF_LEN; i++){
         PhaseA_buff[i] = 0;
@@ -167,14 +182,14 @@ void taskADCFx(UArg arg0, UArg arg1){
 
     while(1){
 
-        events = Event_pend(eventADC, Event_Id_NONE, EVENT_PHASE | EVENT_ZERO_CROSS_DOWN | EVENT_ZERO_CROSS_UP, BIOS_WAIT_FOREVER);
+        events = Event_pend(eventADC, Event_Id_NONE, EVENT_PHASE | EVENT_ZERO_CROSS_DOWN | EVENT_ZERO_CROSS_UP | EVENT_JOY_X | EVENT_JOY_Y, BIOS_WAIT_FOREVER);
         //Semaphore_pend(semADCSample, BIOS_WAIT_FOREVER);
 
         if(events & EVENT_PHASE){
 
-            PhaseA_buff[i] = (int_fast16_t) ADC14_getResult(ADC_MEM_PHASE_A);
-            PhaseB_buff[i] = (int_fast16_t) ADC14_getResult(ADC_MEM_PHASE_B);
-            PhaseC_buff[i] = (int_fast16_t) ADC14_getResult(ADC_MEM_PHASE_C);
+            PhaseA_buff[i] = ADC14_getResult(ADC_MEM_PHASE_A);
+            PhaseB_buff[i] = ADC14_getResult(ADC_MEM_PHASE_B);
+            PhaseC_buff[i] = ADC14_getResult(ADC_MEM_PHASE_C);
             PhaseA_time[i] = Timestamp_get32();
             i++;
             if(i >= PHASE_A_BUFF_LEN){i = 0;}
@@ -192,6 +207,14 @@ void taskADCFx(UArg arg0, UArg arg1){
             ZeroCross_time[j] = Timestamp_get32();
             j++;
             if(j >= ZERO_CROSS_BUFF_LEN){j = 0;}
+        }
+
+        if(events & EVENT_JOY_X){
+            joyX = ADC14_getResult(ADC_MEM_JOYSTICK_X);
+        }
+
+        if(events & EVENT_JOY_X){
+            joyY = ADC14_getResult(ADC_MEM_JOYSTICK_Y);
         }
 
     }
@@ -303,12 +326,49 @@ bool ADCinit(void)
                                                     ADC_DIFFERENTIAL_INPUTS         // Diff amb P9.0 (ADC_INPUT_A17)
                                                     );
 
-    if(!errorInit){return errorInit;} //check error
+    /* Joystick X axis */
+    MAP_GPIO_setAsPeripheralModuleFunctionInputPin(
+                                                    GPIO_PORT_P6,
+                                                    GPIO_PIN0,                      // Set Pin 6.0
+                                                    GPIO_TERTIARY_MODULE_FUNCTION   // As an ADC input
+                                                    );
+
+    errorInit = MAP_ADC14_configureConversionMemory(
+                                                    ADC_MEM_JOYSTICK_X,             // ADC conversion result memory address
+                                                    ADC_VREFPOS_AVCC_VREFNEG_VSS,   // Ref voltatge a 3.3V i -3.3V
+                                                    ADC_INPUT_A15,                  // P6.0 (Joystick X axis)
+                                                    ADC_NONDIFFERENTIAL_INPUTS      // No diferential input
+                                                    );
+
+    /* Joystick X axis */
+    MAP_GPIO_setAsPeripheralModuleFunctionInputPin(
+                                                    GPIO_PORT_P4,
+                                                    GPIO_PIN4,                      // Set Pin 6.0
+                                                    GPIO_TERTIARY_MODULE_FUNCTION   // As an ADC input
+                                                    );
+
+    errorInit = MAP_ADC14_configureConversionMemory(
+                                                    ADC_MEM_JOYSTICK_Y,             // ADC conversion result memory address
+                                                    ADC_VREFPOS_AVCC_VREFNEG_VSS,   // Ref voltatge a 3.3V i -3.3V
+                                                    ADC_INPUT_A9,                   // P4.4 (Joystick Y axis)
+                                                    ADC_NONDIFFERENTIAL_INPUTS      // No diferential input
+                                                    );
+
+
+    if(!errorInit){return errorInit;}                                               //check error
 
     /* Interruptions */
-    MAP_ADC14_clearInterruptFlag (ADC_ALL_INT);                         // Clear all interruption flags
-    MAP_Interrupt_enableInterrupt(INT_ADC14);                           // Enable ADC14 interruptions
+    MAP_ADC14_clearInterruptFlag (ADC_ALL_INT);                                     // Clear all interruption flags
+
+    /* Debug */
+    ADC14_enableInterrupt(ADC_INT0 | ADC_INT3 | ADC_INT4);
+    ADC14_configureMultiSequenceMode(ADC_SEQ_ST_ADD, ADC_SEQ_SP_ADD, true);
+
+    MAP_Interrupt_enableInterrupt(INT_ADC14);                                       // Enable ADC14 interruptions
     MAP_Interrupt_enableMaster();
+
+    /* Enable conversions */
+    MAP_ADC14_enableConversion();
 
     return errorInit;
 }
@@ -404,13 +464,12 @@ void confAdcBemf(uint8_t phase){
             MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_B);                         // Disable comparison window on the phase signal
             MAP_ADC14_disableComparatorWindow(ADC_MEM_PHASE_C);                         // Disable comparison window on the phase signal
             MAP_ADC14_disableInterrupt(ADC_HI_INT | ADC_LO_INT);                        // On motor stop the comparison window is disabled
-            MAP_ADC14_disableConversion();
+//            MAP_ADC14_disableConversion();
             return;
     }
 
     /* Debug */
-    ADC14_enableInterrupt(ADC_INT0);
-    ADC14_configureMultiSequenceMode(ADC_MEM0, ADC_MEM2, true);
+
     MAP_ADC14_clearInterruptFlag (ADC_INT0 | ADC_INT1 | ADC_HI_INT | ADC_LO_INT | ADC_IN_INT);
 
     /* Prepare ADC for reading */
