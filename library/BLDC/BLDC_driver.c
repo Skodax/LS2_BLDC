@@ -83,7 +83,7 @@
 #define MOTOR_CTR_CL                0               // Motor control type -> Closed loop
 
 /* Motor limits */
-#define MOTOR_OL_MAX_SPEED          1300 //2500            // Max speed with the MOTOR_MAX_DUTY
+#define MOTOR_OL_MAX_SPEED          1200 //2500            // Max speed with the MOTOR_MAX_DUTY
 #define MOTOR_CL_MIN_DUTY           360039055
 
 /* Closed loop control */
@@ -124,6 +124,8 @@ extern Task_Handle taskPhaseChange;
 extern Task_Handle taskSpeedCalculator;
 
 extern Timer_Handle timerMotorControlOL;
+extern Clock_Handle clockDebouceMK2Btn1;
+extern Clock_Handle clockDebouceMK2Btn2;
 
 extern Event_Handle eventMotorControl;
 extern Event_Handle eventPhaseChange;
@@ -151,6 +153,8 @@ void hwiPort5Fx(UArg arg);
 void hwiClcTimerFx(UArg arg);
 
 void timerMotorControlOLFx(UArg arg);
+void clockDebouceMK2Btn1Fx(UArg arg);
+void clockDebouceMK2Btn2Fx(UArg arg);
 
 void swiMotorStopFx(UArg arg1, UArg arg2);
 void swiMotorToggleStatusFx(UArg arg1, UArg arg2);
@@ -190,7 +194,11 @@ void hwiPort3Fx(UArg arg){
 
     /* MKII Button 2 */
     if(P3->IFG & PORT_BIT_5){
+
+        /* Toggle motor status */
+        GPIO_disableInt(MKII_BUTTON2_GPIO);                                 // Disable interruptions for this button
         GPIO_clearInt(MKII_BUTTON2_GPIO);                                   // Clear interrupt flag
+        Clock_start(clockDebouceMK2Btn2);                                   // Start debounce timer
         Swi_post(swiMotorToggleStatus);                                     // Toggle motor status (enabled/disabled)
     }
 }
@@ -200,8 +208,13 @@ void hwiPort5Fx(UArg arg){
 
     /* MKII Button 1 */
     if(P5->IFG & PORT_BIT_1){
+
+        /* Stop motor */
+        GPIO_disableInt(MKII_BUTTON1_GPIO);                                 // Disable interruption for this button
         GPIO_clearInt(MKII_BUTTON1_GPIO);                                   // Clear interrupt flag
+        Clock_start(clockDebouceMK2Btn1);                                   // Start debounce timer
         Swi_post(swiMotorStop);                                             // Stop the motor
+
     }
 }
 
@@ -250,6 +263,20 @@ void swiBemfZeroCrossFx(UArg arg1, UArg arg2){
 
     GPIO_write(BEMF_PHC_CLC_GPIO, 1);
 }
+
+/* Debounce timer (clock) */
+void clockDebouceMK2Btn1Fx(UArg arg){
+    GPIO_clearInt(MKII_BUTTON1_GPIO);                                   // Clear interrupt flag - just in case
+    GPIO_enableInt(MKII_BUTTON1_GPIO);                                  // Disable interruptions for this button
+    Clock_stop(clockDebouceMK2Btn1);                                    // Stop debounce timer
+}
+
+void clockDebouceMK2Btn2Fx(UArg arg){
+    GPIO_clearInt(MKII_BUTTON2_GPIO);                                   // Clear interrupt flag
+    GPIO_enableInt(MKII_BUTTON2_GPIO);                                  // Disable interruptions for this button
+    Clock_stop(clockDebouceMK2Btn2);                                    // Stop debounce timer
+}
+
 /****************************************************************************************************************************************************
  *      TASK
  ****************************************************************************************************************************************************/
@@ -320,12 +347,13 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                     } else if(speed > MOTOR_OL_MAX_SPEED){
 
                         /* Open Loop max speed reached */
-                        speed = MOTOR_OL_MAX_SPEED;
-                        Timer_stop(timerMotorControlOL);
+                        speed = MOTOR_OL_MAX_SPEED;                                 // Mantain value at max speed
+                        Timer_stop(timerMotorControlOL);                            // Stop the OL control timer
 
                         /* Change to Closed Loop control */
-                        ctrlType = MOTOR_CTR_CL;
-                        Timer_A_enableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);
+                        ctrlType = MOTOR_CTR_CL;                                            // Change control type
+                        dutyCycleRaw = dutyCycle(12);                                       // Set initial duty for Closed Loop Control
+                        Timer_A_enableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);    // Enable interruption for the Closed Loop Control timer CCR
 
                     } else {
 
@@ -666,17 +694,12 @@ uint32_t dutyCycleForOLCtrl(int32_t speed){
      * timer period.
      */
 
-//    if(speed > 1800){  return dutyCycle(30);}
-//    else if(speed > 1400){  return dutyCycle(25);}
-//    else if(speed > 1100){  return dutyCycle(20);}
-//    else if(speed > 700){   return dutyCycle(15);}
-//    else {                  return dutyCycle(10);}
-
-    if(speed > 1200){       return dutyCycle(15);}
-    else if(speed > 1100){  return dutyCycle(14);}
-    else if(speed > 900){   return dutyCycle(12);}
-    else if(speed > 700){   return dutyCycle(11);}
+    if(speed > 1800){  return dutyCycle(30);}
+    else if(speed > 1400){  return dutyCycle(25);}
+    else if(speed > 1100){  return dutyCycle(20);}
+    else if(speed > 700){   return dutyCycle(15);}
     else {                  return dutyCycle(10);}
+
 }
 
 void motorStatusLED(uint8_t motorEnabeled){
