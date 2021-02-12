@@ -129,6 +129,7 @@ extern Mailbox_Handle mbxPhaseChangeTime;
 extern Mailbox_Handle mbxTheoricalSpeed;
 extern Mailbox_Handle mbxMotorSpeed;
 extern Mailbox_Handle mbxDutyCycle;
+extern Mailbox_Handle mbxMotorStatus;
 
 /****************************************************************************************************************************************************
  *      DIVER HANDLERS
@@ -395,6 +396,9 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                 }
             }
         }
+
+        /* Send motor staus */
+        Mailbox_post(mbxMotorStatus, &motor, BIOS_NO_WAIT);
 
         /* UNEXPECTED EVENT DETECTION */
         if(events & ~(EVENT_MOTOR_MBX_SPEED | EVENT_MOTOR_TOGGLE_STATUS | EVENT_MOTOR_STOP)){

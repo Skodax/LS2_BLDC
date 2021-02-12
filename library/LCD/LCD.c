@@ -50,6 +50,7 @@
 
 /* User libraries */
 #include "../utilities/utilities.h"
+#include "../BLDC/BLDC_driver.h"
 
 /****************************************************************************************************************************************************
  *      MACROS
@@ -135,6 +136,7 @@ extern Task_Handle taskLcd;
 extern Event_Handle eventLCD;
 extern Mailbox_Handle mbxTheoricalSpeed;
 extern Mailbox_Handle mbxJoystick;
+extern Mailbox_Handle mbxMotorStatus;
 
 /****************************************************************************************************************************************************
  *      DIVER HANDLERS
@@ -169,9 +171,9 @@ void taskLcdFx(UArg arg0, UArg arg1){
    uint32_t eventOrMask;                                                                        // Each page depends on different events this mask will listen only to the current page
 
    /* Data values */
-   //Bool hasMsg;                                                                                 // Check if the mailbox has message
    uint32_t theroricalSpeed = 0;                                                                // Speed calculated from the commands sent to the motor
    char theoricalSpeedStr[SPEED_LEN];                                                           // Speed as string
+   Motor motor;                                                                                 // Motor status
 
    Point joystick;                                                                              // Joystick position
    char joystickXStr[JOYSTICK_LEN];                                                             // X axis value as string
@@ -189,7 +191,7 @@ void taskLcdFx(UArg arg0, UArg arg1){
       switch (page) {
         case PAGE_MOTOR:
             pageMotorTemplate();                                                                        // Draw motor page
-            eventOrMask = EVENT_THEORICAL_SPEED;                                                        // Subscribe to theorical speed change event
+            eventOrMask = EVENT_THEORICAL_SPEED | EVENT_MOTOR_STATUS;                                   // Subscribe to theorical speed change event and motor status
             break;
 
         case PAGE_JOYSTICK:
@@ -228,7 +230,9 @@ void taskLcdFx(UArg arg0, UArg arg1){
               break;                                                                                    // Break while loop (redraw entire page)
           }
 
+          /* Get data - empty mailbox */
           Mailbox_pend(mbxTheoricalSpeed, &theroricalSpeed, BIOS_NO_WAIT);                              // Get theorical speed
+          Mailbox_pend(mbxMotorStatus, &motor, BIOS_NO_WAIT);                                           // Get motor status
           Mailbox_pend(mbxJoystick, &joystick, BIOS_NO_WAIT);                                           // Get joystick values
 
           /* Page refresh */
