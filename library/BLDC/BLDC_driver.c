@@ -672,10 +672,10 @@ uint32_t dutyCycleForOLCtrl(int32_t speed){
 //    else if(speed > 700){   return dutyCycle(15);}
 //    else {                  return dutyCycle(10);}
 
-    if(speed > 1800){  return dutyCycle(20);}
-    else if(speed > 1400){  return dutyCycle(18);}
-    else if(speed > 1100){  return dutyCycle(16);}
-    else if(speed > 700){   return dutyCycle(14);}
+    if(speed > 1200){       return dutyCycle(15);}
+    else if(speed > 1100){  return dutyCycle(14);}
+    else if(speed > 900){   return dutyCycle(12);}
+    else if(speed > 700){   return dutyCycle(11);}
     else {                  return dutyCycle(10);}
 }
 

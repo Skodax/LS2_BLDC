@@ -411,7 +411,7 @@ bool ADCinit(void)
     MAP_ADC14_clearInterruptFlag (ADC_ALL_INT);                                     // Clear all interruption flags
 
     /* Debug */
-    ADC14_enableInterrupt(ADC_INT0);
+//    ADC14_enableInterrupt(ADC_INT0);
     ADC14_configureMultiSequenceMode(ADC_SEQ_ST_ADD, ADC_SEQ_SP_ADD, true);
 
     MAP_Interrupt_enableInterrupt(INT_ADC14);                                       // Enable ADC14 interruptions
