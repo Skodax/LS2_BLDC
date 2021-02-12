@@ -83,7 +83,7 @@
 #define MOTOR_CTR_CL                0               // Motor control type -> Closed loop
 
 /* Motor limits */
-#define MOTOR_OL_MAX_SPEED          1200 //2500            // Max speed with the MOTOR_MAX_DUTY
+#define MOTOR_OL_MAX_SPEED          1200            // Max speed with the MOTOR_MAX_DUTY
 #define MOTOR_CL_MIN_DUTY           360039055
 
 /* Closed loop control */
@@ -95,10 +95,10 @@
 /* Closed Loop control timer */
 const Timer_A_ContinuousModeConfig clcTimerConfig =
 {
-    TIMER_A_CLOCKSOURCE_SMCLK,           // ACLK Clock Source
-    TIMER_A_CLOCKSOURCE_DIVIDER_1,      // ACLK/1 = 32.768khz
-    TIMER_A_TAIE_INTERRUPT_DISABLE,      // Enable Overflow ISR
-    TIMER_A_DO_CLEAR                    // Clear Counter
+    TIMER_A_CLOCKSOURCE_SMCLK,              // ACLK Clock Source
+    TIMER_A_CLOCKSOURCE_DIVIDER_1,          // ACLK/1 = 32.768khz
+    TIMER_A_TAIE_INTERRUPT_DISABLE,         // Enable Overflow ISR
+    TIMER_A_DO_CLEAR                        // Clear Counter
 };
 
 const Timer_A_CompareModeConfig clcCompareConfig = {
