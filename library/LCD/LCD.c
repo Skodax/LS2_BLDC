@@ -100,6 +100,13 @@
 #define MOTOR_CTRLTYPE_OL_STR                       "OL"                        // Sting for open loop control
 #define MOTOR_CTRLTYPE_CL_STR                       "CL"                        // Sting for open loop control
 
+/* Duty Cycle bar parameters */
+#define DUTY_BAR_Y                                  95                          // Y corrdinate of the bar
+#define DUTY_BAR_HEIGHT                             15                          // Height of the bar
+#define DUTY_BAR_TEXT_X                             LCD_HORIZONTAL_MAX >> 1     // Center of the screen
+#define DUTY_BAR_TEXT_Y                             DUTY_BAR_Y + 7              // Center of the screen
+#define DUTY_BAR_DISABLED_STR                       "------"                      // Text when the motor is not enabled
+
 /****************************************************************************************************************************************************
  *      DISPLAY HANDLERS
  ****************************************************************************************************************************************************/
@@ -124,14 +131,35 @@ typedef struct {                                                            // G
 /* Handlers */
 Graphics_Context CTX;
 Graphics_Rectangle header = {0,0, LCD_HORIZONTAL_MAX, 30};                  // Display header background
+
 Graphics_Circle joystickGrPt;                                               // Circle for joystick's graphical representation
 Graphics_Circle joystickGrBd;                                               // Border circle for joystick's graphical representation
+
 Range joystickGrRangeX;                                                     // Range of movement in the x axis
 Range joystickGrRangeY;                                                     // Range of movement in the y axis
+
 DataCard_Handle theoricalSpeedHdl;                                          // Theorical speed card
 DataCard_Handle motorCtrTypeHdl;                                            // Motor control type card
+
 DataCard_Handle joystickXHdl;                                               // Joystick X value card
 DataCard_Handle joystickYHdl;                                               // Joystick Y value card
+
+Graphics_Rectangle dutyBarBorder = {                                        // Duty cycle bar border rectangle
+                                        DISPLAY_LEFT_EDGE,
+                                        DUTY_BAR_Y,
+                                        DISPLAY_RIGHT_EDGE,
+                                        DUTY_BAR_Y + DUTY_BAR_HEIGHT
+                                    };
+
+Range dutyBarLimits = {DISPLAY_LEFT_EDGE + 1, DISPLAY_RIGHT_EDGE -1};       // Duty cycle bar limits
+
+Graphics_Rectangle dutyBar = {                                              // Duty cycle bar border rectangle
+                                DISPLAY_LEFT_EDGE + 1,                      // Initial position -> zero
+                                DUTY_BAR_Y + 1,
+                                DISPLAY_LEFT_EDGE + 1,
+                                DUTY_BAR_Y + DUTY_BAR_HEIGHT - 1
+                             };
+
 
 
 /****************************************************************************************************************************************************
@@ -156,9 +184,10 @@ void drawHeader(int8_t *string);
 void drawFooter(uint8_t currentPage, uint8_t numberOfPages);
 void drawDataCard(DataCard_Handle *handle, int8_t *label, int8_t *units, int32_t y, DataCard_Type type);
 void drawDataCardValue(DataCard_Handle *handle, int8_t *data);
-void pageMotorTemplate(void);
+void pageMotorTemplate(Motor *motor, uint8_t barValue);
 void pageJoystickTemplate(void);
 void joystickGraphRefresh(Point *joystick);
+void drawDutyBar(Motor *motor, uint8_t barValue);
 
 /****************************************************************************************************************************************************
  *      TASK
@@ -178,7 +207,8 @@ void taskLcdFx(UArg arg0, UArg arg1){
    /* Data values */
    uint32_t theroricalSpeed = 0;                                                                // Speed calculated from the commands sent to the motor
    char theoricalSpeedStr[SPEED_LEN];                                                           // Speed as string
-   Motor motor;                                                                                 // Motor status
+   Motor motor = {MOTOR_DISABLED, MOTOR_CTR_OL, 0};                                             // Motor status
+   uint8_t dutyBarValue = 0;                                                                    // Duty cycle bar value
 
    Point joystick;                                                                              // Joystick position
    char joystickXStr[JOYSTICK_LEN];                                                             // X axis value as string
@@ -195,7 +225,7 @@ void taskLcdFx(UArg arg0, UArg arg1){
       /* Page initialization */
       switch (page) {
         case PAGE_MOTOR:
-            pageMotorTemplate();                                                                        // Draw motor page
+            pageMotorTemplate(&motor, dutyBarValue);                                                    // Draw motor page
             eventOrMask = EVENT_THEORICAL_SPEED | EVENT_MOTOR_STATUS;                                   // Subscribe to theorical speed change event and motor status
             break;
 
@@ -250,6 +280,10 @@ void taskLcdFx(UArg arg0, UArg arg1){
                    sprintf(theoricalSpeedStr, "%7d", theroricalSpeed);                                      // Convert to string (right align the number and fill str. with trailing spaces)
                    drawDataCardValue(&theoricalSpeedHdl, (int8_t *) theoricalSpeedStr);                     // Refresh theorical speed value
 
+               }
+
+               if(events & EVENT_MOTOR_STATUS){
+
                    /* Motor control type */
                    if(motor.ctrlType == MOTOR_CTR_OL){
                        drawDataCardValue(&motorCtrTypeHdl, (int8_t *) MOTOR_CTRLTYPE_OL_STR);
@@ -257,6 +291,8 @@ void taskLcdFx(UArg arg0, UArg arg1){
                        drawDataCardValue(&motorCtrTypeHdl, (int8_t *) MOTOR_CTRLTYPE_CL_STR);
                    }
 
+                   /* Duty cycle bar */
+                   drawDutyBar(&motor, dutyBarValue);                                                       // Duty cycle bar
                }
                break;
 
@@ -384,7 +420,7 @@ void drawDataCardValue(DataCard_Handle *handle, int8_t *data){
 
 /* PAGE TEMPLATES (initialization) */
 
-void pageMotorTemplate(){
+void pageMotorTemplate(Motor *motor, uint8_t barValue){
     /* HEADER */
     drawHeader((int8_t *)"BLDC Motor");                                                          // Header for the page
 
@@ -409,7 +445,12 @@ void pageMotorTemplate(){
                  );
     drawDataCardValue(&motorCtrTypeHdl, (int8_t *) MOTOR_CTRLTYPE_OL_STR);
 
+    /* Duty cycle and status */
+    Graphics_setForegroundColor(CTXP, COLOR_TEXT_MUTED);
+    Graphics_drawRectangle(CTXP, &dutyBarBorder);                                               // Draw duty bar border
+    drawDutyBar(motor, barValue);
 }
+
 
 void pageJoystickTemplate(){
 
@@ -475,4 +516,18 @@ void joystickGraphRefresh(Point *joystick){
     Graphics_setForegroundColor(CTXP, GRAPHICS_COLOR_BLUE_VIOLET);
     Graphics_fillCircle(CTXP, joystickGrPt.x, joystickGrPt.y, joystickGrPt.radius);             // Draw new circle
 
+}
+
+void drawDutyBar(Motor *motor, uint8_t barValue){
+    Graphics_setFont(CTXP, FONT_SMALL);
+    if(motor->enabled){
+        uint8_t duty = dutyCycleInv(motor->dutyCycleRaw);
+        char dutyStr[6];
+        sprintf(dutyStr, "%3d%%", duty);
+        Graphics_setForegroundColor(CTXP, COLOR_TEXT);
+        Graphics_drawStringCentered(CTXP, (int8_t *) dutyStr, AUTO_STRING_LENGTH, DUTY_BAR_TEXT_X, DUTY_BAR_TEXT_Y, OPAQUE_TEXT);
+    } else {
+        Graphics_setForegroundColor(CTXP, COLOR_HEADER_BACKGROUND);
+        Graphics_drawStringCentered(CTXP, (int8_t *) DUTY_BAR_DISABLED_STR, AUTO_STRING_LENGTH, DUTY_BAR_TEXT_X, DUTY_BAR_TEXT_Y, OPAQUE_TEXT);
+    }
 }
