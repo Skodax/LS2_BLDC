@@ -76,12 +76,6 @@
 #define TIME_BUFF_LEN               16              // Number of time samples to average in order to calculate motor's speed
 #define TIME_AVG_SHIFT              4               // Shift factor for average calculation
 
-/* Motor status */
-#define MOTOR_ENABLED               1               // Motor enabled and ready to go
-#define MOTOR_DISABLED              0
-#define MOTOR_CTR_OL                1               // Motor control type -> Open loop
-#define MOTOR_CTR_CL                0               // Motor control type -> Closed loop
-
 /* Motor limits */
 #define MOTOR_OL_MAX_SPEED          1200            // Max speed with the MOTOR_MAX_DUTY
 #define MOTOR_CL_MIN_DUTY           360039055
@@ -165,7 +159,6 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2);
 void taskSpeedCalculatorFx(UArg arg1, UArg arg2);
 
 void setPhase(uint8_t phase);
-uint32_t dutyCycle(uint8_t percentage);
 uint32_t dutyCycleForOLCtrl(int32_t speed);
 void motorStatusLED(uint8_t motorEnabeled);
 
@@ -287,11 +280,14 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
 
     /* Motor status */
     int32_t speed = 0;                                      // Motor stopped by default
-    uint8_t ctrlType = MOTOR_CTR_OL;                        // Motor control Open Loop by default
     uint32_t timerPeriod = 0;                               // Timer period for OL control
-    uint32_t dutyCycleRaw = 0;                              // Duty cycle for applied to the PWM signals
-    uint8_t motorEnabeled = MOTOR_DISABLED;                 // Motor disabled by default
-    motorStatusLED(motorEnabeled);                          // Turn on Red/Green LEDs depending on the motor status
+    Motor motor = {
+                       MOTOR_DISABLED,                      // Motor disabled by default
+                       MOTOR_CTR_OL,                        // Motor control Open Loop by default
+                       0                                    // Duty cycle for applied to the PWM signals
+                   };
+
+    motorStatusLED(motor.enabled);                          // Turn on Red/Green LEDs depending on the motor status
 
     /* External control */
     int16_t joystick = 0;                                   // No actions by default
@@ -313,9 +309,9 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
         if((events & EVENT_MOTOR_STOP)){
 
             /* Stop motor */
-            speed = dutyCycleRaw = timerPeriod = joystick = 0;                      // Reset control variables
-            ctrlType = MOTOR_CTR_OL;                                                // Set motor control to OL
-            Mailbox_post(mbxDutyCycle, &dutyCycleRaw, BIOS_NO_WAIT);                // Send duty cycle to the motor
+            speed = motor.dutyCycleRaw = timerPeriod = joystick = 0;                      // Reset control variables
+            motor.ctrlType = MOTOR_CTR_OL;                                                // Set motor control to OL
+            Mailbox_post(mbxDutyCycle, &motor.dutyCycleRaw, BIOS_NO_WAIT);                // Send duty cycle to the motor
             Timer_stop(timerMotorControlOL);                                        // Stop OpenLoop control timer
             Timer_A_stopTimer(CLC_TIMER);                                           // Stop CLC timer
             Timer_A_disableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);       // Disable CLC timer interrupts
@@ -327,16 +323,16 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
             if(events & EVENT_MOTOR_TOGGLE_STATUS){
 
                 /* Toggle motor enabled status */
-                motorEnabeled = !motorEnabeled;                                     // Toggle status
-                motorStatusLED(motorEnabeled);                                      // Turn on Red/Green LEDs depending on the motor status
+                motor.enabled = !motor.enabled;                                     // Toggle status
+                motorStatusLED(motor.enabled);                                      // Turn on Red/Green LEDs depending on the motor status
 
-                if(!motorEnabeled){
+                if(!motor.enabled){
                     Swi_post(swiMotorStop);                                         // If disable motor then stop the motor
                 }
 
 
-            } else if((events & EVENT_MOTOR_MBX_SPEED) & motorEnabeled){
-                if(ctrlType == MOTOR_CTR_OL){
+            } else if((events & EVENT_MOTOR_MBX_SPEED) & motor.enabled){
+                if(motor.ctrlType == MOTOR_CTR_OL){
 
                     /* Open Loop control */
                     speed += (int32_t) (joystick);                                  // Accelerate depending on the joysticks position
@@ -351,39 +347,39 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                         Timer_stop(timerMotorControlOL);                            // Stop the OL control timer
 
                         /* Change to Closed Loop control */
-                        ctrlType = MOTOR_CTR_CL;                                            // Change control type
-                        dutyCycleRaw = dutyCycle(12);                                       // Set initial duty for Closed Loop Control
+                        motor.ctrlType = MOTOR_CTR_CL;                                            // Change control type
+                        motor.dutyCycleRaw = dutyCycle(12);                                       // Set initial duty for Closed Loop Control
                         Timer_A_enableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);    // Enable interruption for the Closed Loop Control timer CCR
 
                     } else {
 
                         /* Convert to Timer period and Duty Cycle */
                         timerPeriod = speedToTime / speed;                          // Convert RPM to timer period
-                        dutyCycleRaw = dutyCycleForOLCtrl(speed);                   // Get corresponding duty cycle for current speed (Look Up Table)
+                        motor.dutyCycleRaw = dutyCycleForOLCtrl(speed);                   // Get corresponding duty cycle for current speed (Look Up Table)
 
                         /* Set speed */
-                        Mailbox_post(mbxDutyCycle, &dutyCycleRaw, BIOS_NO_WAIT);    // Send Duty Cycle to the actual motor drive task (taskPhaseChange)
+                        Mailbox_post(mbxDutyCycle, &motor.dutyCycleRaw, BIOS_NO_WAIT);    // Send Duty Cycle to the actual motor drive task (taskPhaseChange)
                         Timer_setPeriod(timerMotorControlOL, timerPeriod);          // Set timer period (set motor speed)
                         Timer_start(timerMotorControlOL);                           // Restart timer (with setPeriod timer automatically stops)
                     }
-                } else if(ctrlType == MOTOR_CTR_CL){
+                } else if(motor.ctrlType == MOTOR_CTR_CL){
 
                     /* Closed Loop control */
-                    dutyCycleRaw += (joystick << 20);
+                    motor.dutyCycleRaw += (joystick << 20);
 
-                    if(dutyCycleRaw < MOTOR_CL_MIN_DUTY){
+                    if(motor.dutyCycleRaw < MOTOR_CL_MIN_DUTY){
 
                         /* Closed Loop min speed reached */
                         speed = 1100;
 
                         /* Change to Closed Loop control */
-                        ctrlType = MOTOR_CTR_OL;
+                        motor.ctrlType = MOTOR_CTR_OL;
                         Timer_A_disableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);
 
                         Event_post(eventMotorControl, EVENT_MOTOR_MBX_SPEED);
 
                     } else {
-                        Mailbox_post(mbxDutyCycle, &dutyCycleRaw, BIOS_NO_WAIT);        // Send Duty Cycle to the actual motor drive task (taskPhaseChange)
+                        Mailbox_post(mbxDutyCycle, &motor.dutyCycleRaw, BIOS_NO_WAIT);        // Send Duty Cycle to the actual motor drive task (taskPhaseChange)
                     }
 
                 } else {
@@ -393,7 +389,7 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                     Swi_post(swiMotorStop);
 
                     /* Report error and halt */
-                    System_printf("Unknown ctrlType on taskMotorControl. Event: %d \n", ctrlType);
+                    System_printf("Unknown ctrlType on taskMotorControl. Event: %d \n", motor.ctrlType);
                     System_flush();
                     while(1);
                 }
@@ -682,6 +678,14 @@ uint32_t dutyCycle(uint8_t percentage){
      * Out: Duty value for the PWM driver
      */
     return (uint32_t) (((uint64_t) PWM_DUTY_FRACTION_MAX * percentage) / 100);
+}
+
+uint8_t dutyCycleInv(uint32_t dutyRaw){
+    /* Duty Cycle calculator
+     * In:  Duty cycle from 0 to PWM_DUTY_FRACTION_MAX
+     * Out: Duty cycle in percentac (0 to 100)
+     */
+    return (uint8_t) (((uint64_t) dutyRaw * 100) / PWM_DUTY_FRACTION_MAX);
 }
 
 uint32_t dutyCycleForOLCtrl(int32_t speed){
