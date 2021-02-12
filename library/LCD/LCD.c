@@ -96,6 +96,10 @@
 #define SPEED_LEN                                   7                           // Speed string length
 #define JOYSTICK_LEN                                6                           // Joystick values string length
 
+/* Motor status parameters */
+#define MOTOR_CTRLTYPE_OL_STR                       "OL"                        // Sting for open loop control
+#define MOTOR_CTRLTYPE_CL_STR                       "CL"                        // Sting for open loop control
+
 /****************************************************************************************************************************************************
  *      DISPLAY HANDLERS
  ****************************************************************************************************************************************************/
@@ -125,6 +129,7 @@ Graphics_Circle joystickGrBd;                                               // B
 Range joystickGrRangeX;                                                     // Range of movement in the x axis
 Range joystickGrRangeY;                                                     // Range of movement in the y axis
 DataCard_Handle theoricalSpeedHdl;                                          // Theorical speed card
+DataCard_Handle motorCtrTypeHdl;                                            // Motor control type card
 DataCard_Handle joystickXHdl;                                               // Joystick X value card
 DataCard_Handle joystickYHdl;                                               // Joystick Y value card
 
@@ -240,8 +245,18 @@ void taskLcdFx(UArg arg0, UArg arg1){
             case PAGE_MOTOR:
 
                if(events & EVENT_THEORICAL_SPEED){
+
+                   /* Motor speed */
                    sprintf(theoricalSpeedStr, "%7d", theroricalSpeed);                                      // Convert to string (right align the number and fill str. with trailing spaces)
                    drawDataCardValue(&theoricalSpeedHdl, (int8_t *) theoricalSpeedStr);                     // Refresh theorical speed value
+
+                   /* Motor control type */
+                   if(motor.ctrlType == MOTOR_CTR_OL){
+                       drawDataCardValue(&motorCtrTypeHdl, (int8_t *) MOTOR_CTRLTYPE_OL_STR);
+                   } else {
+                       drawDataCardValue(&motorCtrTypeHdl, (int8_t *) MOTOR_CTRLTYPE_CL_STR);
+                   }
+
                }
                break;
 
@@ -370,18 +385,30 @@ void drawDataCardValue(DataCard_Handle *handle, int8_t *data){
 /* PAGE TEMPLATES (initialization) */
 
 void pageMotorTemplate(){
-    /* Header */
+    /* HEADER */
     drawHeader((int8_t *)"BLDC Motor");                                                          // Header for the page
 
-    /* Body */
+    /* BODY */
+    /* Speed */
     drawDataCard(                                                                                // Draw a boilerplate for theroical speed value
                     &theoricalSpeedHdl,                                                          // Card handle
-                    (int8_t *)"Theorical speed",                                                 // Card label
+                    (int8_t *)"Speed",                                                           // Card label
                     (int8_t *)"RPM",                                                             // Card units
                     40,                                                                          // Card y coord.
-                    DATA_CARD_TYPE_NORMAL                                                        // Data below the label
+                    DATA_CARD_TYPE_INLINE                                                        // Data inline with the label
                 );
     drawDataCardValue(&theoricalSpeedHdl, (int8_t *) "0");                                      // By default write 0 speed
+
+    /* Control Type */
+    drawDataCard(                                                                               // Draw boilerplate for motor control type value
+                    &motorCtrTypeHdl,                                                           // Card handle
+                    (int8_t *)"Control type",                                                   // Card label
+                    (int8_t *)"",                                                               // Card units
+                    65,                                                                         // Card y corrd
+                    DATA_CARD_TYPE_INLINE                                                       // Data displayed inline with the label
+                 );
+    drawDataCardValue(&motorCtrTypeHdl, (int8_t *) MOTOR_CTRLTYPE_OL_STR);
+
 }
 
 void pageJoystickTemplate(){
