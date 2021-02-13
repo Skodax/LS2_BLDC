@@ -87,10 +87,11 @@
 #define DATA_CARD_UNITS_INLINE_YOFFSET              1                           // Height between y origin coordinate and units when is a inline card
 
 /* Pages parameters */
-#define PAGE_MOTOR                                  0                           // Motor's page index
-#define PAGE_JOYSTICK                               1                           // Joystick's page index
-#define PAGE_COUNT                                  2                           // Number of defined pages
-#define PAGE_DEFAULT                                PAGE_MOTOR                  // Page to be show after booting
+#define PAGE_WELCOME                                0
+#define PAGE_MOTOR                                  1                           // Motor's page index
+#define PAGE_JOYSTICK                               2                           // Joystick's page index
+#define PAGE_COUNT                                  3                           // Number of defined pages
+#define PAGE_DEFAULT                                PAGE_WELCOME                // Page to be show after booting
 
 /* Data values */
 #define SPEED_LEN                                   7                           // Speed string length
@@ -185,6 +186,7 @@ void drawHeader(int8_t *string);
 void drawFooter(uint8_t currentPage, uint8_t numberOfPages);
 void drawDataCard(DataCard_Handle *handle, int8_t *label, int8_t *units, int32_t y, DataCard_Type type);
 void drawDataCardValue(DataCard_Handle *handle, int8_t *data);
+void pageWelcomeTemplate(void);
 void pageMotorTemplate(Motor *motor);
 void pageJoystickTemplate(void);
 void joystickGraphRefresh(Point *joystick);
@@ -224,6 +226,11 @@ void taskLcdFx(UArg arg0, UArg arg1){
 
       /* Page initialization */
       switch (page) {
+        case PAGE_WELCOME:
+            pageWelcomeTemplate();                                                                      // Draw welcome page
+            eventOrMask = 0;                                                                            // Don't subscribe to any events (static page)
+            break;
+
         case PAGE_MOTOR:
             pageMotorTemplate(&motor);                                                                  // Draw motor page
             eventOrMask = EVENT_THEORICAL_SPEED | EVENT_MOTOR_STATUS;                                   // Subscribe to theorical speed change event and motor status
@@ -306,13 +313,7 @@ void taskLcdFx(UArg arg0, UArg arg1){
                     joystickGraphRefresh(&joystick);                                                        // Move joystick's graph inner circle
                 }
                 break;
-
-            default:
-                System_printf("LCD unrecognized page\n");
-                System_flush();
-                break;
           }
-
       }
    }
 }
@@ -419,6 +420,74 @@ void drawDataCardValue(DataCard_Handle *handle, int8_t *data){
 }
 
 /* PAGE TEMPLATES (initialization) */
+
+void pageWelcomeTemplate(void){
+    /* HEADER */
+    drawHeader((int8_t *)"Welcome");                                                            // Header for the page
+
+    /* BODY */
+    /* Text */
+    Graphics_setFont(CTXP, FONT_SMALL);
+    Graphics_setForegroundColor(CTXP, COLOR_TEXT);
+    Graphics_drawString(
+                        CTXP,
+                        (int8_t *)"Brushless DC motor",
+                        AUTO_STRING_LENGTH,
+                        DISPLAY_LEFT_EDGE,
+                        35,
+                        TRANSPARENT_TEXT
+                        );
+    Graphics_drawString(
+                        CTXP,
+                        (int8_t *)"control application.",
+                        AUTO_STRING_LENGTH,
+                        DISPLAY_LEFT_EDGE,
+                        45,
+                        TRANSPARENT_TEXT
+                        );
+    Graphics_drawString(
+                        CTXP,
+                        (int8_t *)"Depending on the motor",
+                        AUTO_STRING_LENGTH,
+                        DISPLAY_LEFT_EDGE,
+                        60,
+                        TRANSPARENT_TEXT
+                        );
+    Graphics_drawString(
+                        CTXP,
+                        (int8_t *)"speed, the control type",
+                        AUTO_STRING_LENGTH,
+                        DISPLAY_LEFT_EDGE,
+                        70,
+                        TRANSPARENT_TEXT
+                        );
+    Graphics_drawString(
+                        CTXP,
+                        (int8_t *)"will switch automatically.",
+                        AUTO_STRING_LENGTH,
+                        DISPLAY_LEFT_EDGE,
+                        80,
+                        TRANSPARENT_TEXT
+                        );
+    Graphics_setForegroundColor(CTXP, COLOR_TEXT_MUTED);
+    Graphics_drawString(
+                        CTXP,
+                        (int8_t *)"Use the joystick to slide",
+                        AUTO_STRING_LENGTH,
+                        DISPLAY_LEFT_EDGE,
+                        95,
+                        TRANSPARENT_TEXT
+                        );
+    Graphics_drawString(
+                        CTXP,
+                        (int8_t *)"though the pages.",
+                        AUTO_STRING_LENGTH,
+                        DISPLAY_LEFT_EDGE,
+                        105,
+                        TRANSPARENT_TEXT
+                        );
+
+}
 
 void pageMotorTemplate(Motor *motor){
     /* HEADER */
