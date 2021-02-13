@@ -50,6 +50,7 @@
 
 /* User libraries */
 #include "../utilities/utilities.h"
+#include "../images/images.h"
 #include "../BLDC/BLDC_driver.h"
 
 /****************************************************************************************************************************************************
@@ -90,7 +91,9 @@
 #define PAGE_WELCOME                                0
 #define PAGE_MOTOR                                  1                           // Motor's page index
 #define PAGE_JOYSTICK                               2                           // Joystick's page index
-#define PAGE_COUNT                                  3                           // Number of defined pages
+#define PAGE_CONTROLS1                              3                           // Controls diagram page index
+#define PAGE_CONTROLS2                              4                           // Controls detailed page index
+#define PAGE_COUNT                                  5                           // Number of defined pages
 #define PAGE_DEFAULT                                PAGE_WELCOME                // Page to be show after booting
 
 /* Data values */
@@ -189,6 +192,8 @@ void drawDataCardValue(DataCard_Handle *handle, int8_t *data);
 void pageWelcomeTemplate(void);
 void pageMotorTemplate(Motor *motor);
 void pageJoystickTemplate(void);
+void pageControls1Template(void);
+void pageControls2Template(void);
 void joystickGraphRefresh(Point *joystick);
 void drawDutyBar(Motor *motor);
 
@@ -239,6 +244,16 @@ void taskLcdFx(UArg arg0, UArg arg1){
         case PAGE_JOYSTICK:
             pageJoystickTemplate();                                                                     // Draw joystick page
             eventOrMask = EVENT_JOYSTICK_DATA;                                                          // Subscribe to joystick data event
+            break;
+
+        case PAGE_CONTROLS1:
+            pageControls1Template();                                                                    // Draw controls diagram page
+            eventOrMask = 0;                                                                            // Don't subscribe to any events (static page)
+            break;
+
+        case PAGE_CONTROLS2:
+            pageControls2Template();                                                                    // Draw controls diagram page
+            eventOrMask = 0;                                                                            // Don't subscribe to any events (static page)
             break;
 
         default:
@@ -589,6 +604,45 @@ void joystickGraphRefresh(Point *joystick){
 
 }
 
+void pageControls1Template(void){
+    /* HEADER */
+    drawHeader((int8_t *)"Controls 1");                                                            // Header for the page
+
+    /* BODY */
+    /* Image */
+    Graphics_drawImage(CTXP, &ControlDiagram4BPP_UNCOMP, 0, 35);
+
+    Graphics_setFont(CTXP, FONT_SMALL);
+    Graphics_setForegroundColor(CTXP, COLOR_TEXT_MUTED);
+    Graphics_drawString(
+                        CTXP,
+                        (int8_t *)"More info on the next",
+                        AUTO_STRING_LENGTH,
+                        DISPLAY_LEFT_EDGE,
+                        100,
+                        TRANSPARENT_TEXT
+                        );
+    Graphics_drawString(
+                        CTXP,
+                        (int8_t *)"page",
+                        AUTO_STRING_LENGTH,
+                        DISPLAY_LEFT_EDGE,
+                        110,
+                        TRANSPARENT_TEXT
+                        );
+
+}
+
+void pageControls2Template(void){
+    /* HEADER */
+    drawHeader((int8_t *)"Controls 2");                                                            // Header for the page
+
+    /* BODY */
+    /* Text */
+
+}
+
+/* Utilities */
 void drawDutyBar(Motor *motor){
     Graphics_setFont(CTXP, FONT_SMALL);
     if(motor->enabled){
