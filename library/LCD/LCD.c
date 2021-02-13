@@ -612,6 +612,7 @@ void pageControls1Template(void){
     /* Image */
     Graphics_drawImage(CTXP, &ControlDiagram4BPP_UNCOMP, 0, 35);
 
+    /* Text */
     Graphics_setFont(CTXP, FONT_SMALL);
     Graphics_setForegroundColor(CTXP, COLOR_TEXT_MUTED);
     Graphics_drawString(
@@ -639,6 +640,48 @@ void pageControls2Template(void){
 
     /* BODY */
     /* Text */
+    Graphics_setFont(CTXP, FONT_SMALL);
+    Graphics_setForegroundColor(CTXP, COLOR_TEXT);
+    Graphics_drawString(
+                        CTXP,
+                        (int8_t *)"1. Enable/disable motor",
+                        AUTO_STRING_LENGTH,
+                        DISPLAY_LEFT_EDGE,
+                        40,
+                        TRANSPARENT_TEXT
+                        );
+    Graphics_drawString(
+                        CTXP,
+                        (int8_t *)"2. Stop the motor",
+                        AUTO_STRING_LENGTH,
+                        DISPLAY_LEFT_EDGE,
+                        55,
+                        TRANSPARENT_TEXT
+                        );
+    Graphics_drawString(
+                        CTXP,
+                        (int8_t *)"3. Change motor speed",
+                        AUTO_STRING_LENGTH,
+                        DISPLAY_LEFT_EDGE,
+                        70,
+                        TRANSPARENT_TEXT
+                        );
+    Graphics_drawString(
+                        CTXP,
+                        (int8_t *)"4. Change display page",
+                        AUTO_STRING_LENGTH,
+                        DISPLAY_LEFT_EDGE,
+                        85,
+                        TRANSPARENT_TEXT
+                        );
+    Graphics_drawString(
+                        CTXP,
+                        (int8_t *)"5. Motor status indicator",
+                        AUTO_STRING_LENGTH,
+                        DISPLAY_LEFT_EDGE,
+                        100,
+                        TRANSPARENT_TEXT
+                        );
 
 }
 
