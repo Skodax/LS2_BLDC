@@ -348,25 +348,29 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                         Timer_stop(timerMotorControlOL);                            // Stop the OL control timer
 
                         /* Change to Closed Loop control */
-                        motor.ctrlType = MOTOR_CTR_CL;                                            // Change control type
-                        motor.dutyCycleRaw = dutyCycle(12);                                       // Set initial duty for Closed Loop Control
-                        Timer_A_enableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);    // Enable interruption for the Closed Loop Control timer CCR
+                        motor.ctrlType = MOTOR_CTR_CL;                                          // Change control type
+                        motor.dutyCycleRaw = dutyCycle(12);                                     // Set initial duty for Closed Loop Control
+                        Timer_A_enableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);        // Enable interruption for the Closed Loop Control timer CCR
 
                     } else {
 
                         /* Convert to Timer period and Duty Cycle */
-                        timerPeriod = speedToTime / speed;                          // Convert RPM to timer period
-                        motor.dutyCycleRaw = dutyCycleForOLCtrl(speed);                   // Get corresponding duty cycle for current speed (Look Up Table)
+                        timerPeriod = speedToTime / speed;                                  // Convert RPM to timer period
+                        motor.dutyCycleRaw = dutyCycleForOLCtrl(speed);                     // Get corresponding duty cycle for current speed (Look Up Table)
 
                         /* Set speed */
-                        Mailbox_post(mbxDutyCycle, &motor.dutyCycleRaw, BIOS_NO_WAIT);    // Send Duty Cycle to the actual motor drive task (taskPhaseChange)
-                        Timer_setPeriod(timerMotorControlOL, timerPeriod);          // Set timer period (set motor speed)
-                        Timer_start(timerMotorControlOL);                           // Restart timer (with setPeriod timer automatically stops)
+                        Mailbox_post(mbxDutyCycle, &motor.dutyCycleRaw, BIOS_NO_WAIT);      // Send Duty Cycle to the actual motor drive task (taskPhaseChange)
+                        Timer_setPeriod(timerMotorControlOL, timerPeriod);                  // Set timer period (set motor speed)
+                        Timer_start(timerMotorControlOL);                                   // Restart timer (with setPeriod timer automatically stops)
                     }
                 } else if(motor.ctrlType == MOTOR_CTR_CL){
 
                     /* Closed Loop control */
-                    motor.dutyCycleRaw += (joystick << 20);
+                    uint64_t dutyCycleRaw = (uint64_t) motor.dutyCycleRaw + (joystick << 20);         // Calculate next duty cycle
+                    if(dutyCycleRaw > PWM_DUTY_FRACTION_MAX){                                           // Max duty cycle limit
+                        dutyCycleRaw = PWM_DUTY_FRACTION_MAX;
+                    }
+                    motor.dutyCycleRaw = (uint32_t) dutyCycleRaw;                                       // Store data into motor status
 
                     if(motor.dutyCycleRaw < MOTOR_CL_MIN_DUTY){
 

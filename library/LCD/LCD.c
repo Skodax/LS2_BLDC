@@ -102,7 +102,7 @@
 
 /* Duty Cycle bar parameters */
 #define DUTY_BAR_Y                                  95                          // Y corrdinate of the bar
-#define DUTY_BAR_HEIGHT                             15                          // Height of the bar
+#define DUTY_BAR_HEIGHT                             16                          // Height of the bar
 #define DUTY_BAR_TEXT_X                             LCD_HORIZONTAL_MAX >> 1     // Center of the screen
 #define DUTY_BAR_TEXT_Y                             DUTY_BAR_Y + 7              // Center of the screen
 #define DUTY_BAR_DISABLED_STR                       "------"                      // Text when the motor is not enabled
@@ -152,6 +152,7 @@ Graphics_Rectangle dutyBarBorder = {                                        // D
                                     };
 
 Range dutyBarLimits = {DISPLAY_LEFT_EDGE + 1, DISPLAY_RIGHT_EDGE -1};       // Duty cycle bar limits
+Range dutyCycleLimits = {0, 100};                                           // Duty cycle limits
 
 Graphics_Rectangle dutyBar = {                                              // Duty cycle bar border rectangle
                                 DISPLAY_LEFT_EDGE + 1,                      // Initial position -> zero
@@ -184,10 +185,10 @@ void drawHeader(int8_t *string);
 void drawFooter(uint8_t currentPage, uint8_t numberOfPages);
 void drawDataCard(DataCard_Handle *handle, int8_t *label, int8_t *units, int32_t y, DataCard_Type type);
 void drawDataCardValue(DataCard_Handle *handle, int8_t *data);
-void pageMotorTemplate(Motor *motor, uint8_t barValue);
+void pageMotorTemplate(Motor *motor);
 void pageJoystickTemplate(void);
 void joystickGraphRefresh(Point *joystick);
-void drawDutyBar(Motor *motor, uint8_t barValue);
+void drawDutyBar(Motor *motor);
 
 /****************************************************************************************************************************************************
  *      TASK
@@ -208,7 +209,6 @@ void taskLcdFx(UArg arg0, UArg arg1){
    uint32_t theroricalSpeed = 0;                                                                // Speed calculated from the commands sent to the motor
    char theoricalSpeedStr[SPEED_LEN];                                                           // Speed as string
    Motor motor = {MOTOR_DISABLED, MOTOR_CTR_OL, 0};                                             // Motor status
-   uint8_t dutyBarValue = 0;                                                                    // Duty cycle bar value
 
    Point joystick;                                                                              // Joystick position
    char joystickXStr[JOYSTICK_LEN];                                                             // X axis value as string
@@ -225,7 +225,7 @@ void taskLcdFx(UArg arg0, UArg arg1){
       /* Page initialization */
       switch (page) {
         case PAGE_MOTOR:
-            pageMotorTemplate(&motor, dutyBarValue);                                                    // Draw motor page
+            pageMotorTemplate(&motor);                                                                  // Draw motor page
             eventOrMask = EVENT_THEORICAL_SPEED | EVENT_MOTOR_STATUS;                                   // Subscribe to theorical speed change event and motor status
             break;
 
@@ -292,7 +292,7 @@ void taskLcdFx(UArg arg0, UArg arg1){
                    }
 
                    /* Duty cycle bar */
-                   drawDutyBar(&motor, dutyBarValue);                                                       // Duty cycle bar
+                   drawDutyBar(&motor);                                                                     // Duty cycle bar
                }
                break;
 
@@ -420,7 +420,7 @@ void drawDataCardValue(DataCard_Handle *handle, int8_t *data){
 
 /* PAGE TEMPLATES (initialization) */
 
-void pageMotorTemplate(Motor *motor, uint8_t barValue){
+void pageMotorTemplate(Motor *motor){
     /* HEADER */
     drawHeader((int8_t *)"BLDC Motor");                                                          // Header for the page
 
@@ -448,7 +448,9 @@ void pageMotorTemplate(Motor *motor, uint8_t barValue){
     /* Duty cycle and status */
     Graphics_setForegroundColor(CTXP, COLOR_TEXT_MUTED);
     Graphics_drawRectangle(CTXP, &dutyBarBorder);                                               // Draw duty bar border
-    drawDutyBar(motor, barValue);
+    dutyBar.xMin = (uint8_t ) dutyBarLimits.min;                                                // Reset duty bar, paint it all
+    dutyBar.xMax = dutyBar.xMin;
+    drawDutyBar(motor);
 }
 
 
@@ -518,16 +520,52 @@ void joystickGraphRefresh(Point *joystick){
 
 }
 
-void drawDutyBar(Motor *motor, uint8_t barValue){
+void drawDutyBar(Motor *motor){
     Graphics_setFont(CTXP, FONT_SMALL);
     if(motor->enabled){
+
+        /* Get percentage */
         uint8_t duty = dutyCycleInv(motor->dutyCycleRaw);
-        char dutyStr[6];
-        sprintf(dutyStr, "%3d%%", duty);
+        uint8_t nextBarValue = (uint8_t) map((int16_t) duty, &dutyCycleLimits, &dutyBarLimits);         // Convert from duty cycle to bar x coordinate pixel
+
+        /* Duty cycle bar
+        * Draw or erase only the difference between the last frame and the new one
+        */
+        if(nextBarValue > dutyBar.xMax){
+
+            /* Increase bar */
+            dutyBar.xMax = nextBarValue;                                                                // Extend the rectangle to the new value (extend to the right)
+            Graphics_setForegroundColor(CTXP, COLOR_TEXT);                                              // Draw bar portion (white color)
+            Graphics_fillRectangle(CTXP, &dutyBar);                                                     // Actual bar draw
+            dutyBar.xMin = dutyBar.xMax;                                                                // Prepare rectangle for next refresh
+
+        } else if(nextBarValue < dutyBar.xMin) {
+
+            /* Decrease bar */
+            dutyBar.xMin = nextBarValue;                                                                // Extend the rectangle to the new value (extend to the left)
+            Graphics_setForegroundColor(CTXP, COLOR_BACKGROUND);                                        // Erase bar portion (black color)
+            Graphics_fillRectangle(CTXP, &dutyBar);                                                     // Actual bar draw
+            dutyBar.xMax = dutyBar.xMin;                                                                // Prepare rectangle for next refresh
+        }
+
+        /* Percentage value */
+        char dutyStr[6];                                                                                // Percentage string
+        sprintf(dutyStr, "%3d%%", duty);                                                                // Convert to a percentage with '%' symbol
         Graphics_setForegroundColor(CTXP, COLOR_TEXT);
         Graphics_drawStringCentered(CTXP, (int8_t *) dutyStr, AUTO_STRING_LENGTH, DUTY_BAR_TEXT_X, DUTY_BAR_TEXT_Y, OPAQUE_TEXT);
+
     } else {
+
+        /* Motor disabled text */
         Graphics_setForegroundColor(CTXP, COLOR_HEADER_BACKGROUND);
         Graphics_drawStringCentered(CTXP, (int8_t *) DUTY_BAR_DISABLED_STR, AUTO_STRING_LENGTH, DUTY_BAR_TEXT_X, DUTY_BAR_TEXT_Y, OPAQUE_TEXT);
+
+        /* Erase duty bar */
+        if(dutyBar.xMin != dutyBarLimits.min){
+            dutyBar.xMin = (uint8_t ) dutyBarLimits.min;                                                // Decrease bar to the start point
+            Graphics_setForegroundColor(CTXP, COLOR_BACKGROUND);                                        // Erase bar portion (black color)
+            Graphics_fillRectangle(CTXP, &dutyBar);                                                     // Actual bar draw
+            dutyBar.xMax = dutyBar.xMin;                                                                // Prepare rectangle for next refresh
+        }
     }
 }
