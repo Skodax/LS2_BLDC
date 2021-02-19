@@ -215,7 +215,7 @@ void taskADCFx(UArg arg0, UArg arg1){
 
     while(1){
 
-        events = Event_pend(eventADC, Event_Id_NONE, EVENT_JOYSTICK_READ | EVENT_PHASE | EVENT_ZERO_CROSS_DOWN | EVENT_ZERO_CROSS_UP, BIOS_WAIT_FOREVER);
+        events = Event_pend(eventADC, Event_Id_NONE, EVENT_JOYSTICK_READ | EVENT_PHASE | EVENT_ZERO_CROSS_DOWN | EVENT_ZERO_CROSS_UP, BIOS_WAIT_FOREVER); // Todo: change to a semaphore get rid of the debug code
 
         if(events & EVENT_JOYSTICK_READ){
 
@@ -234,7 +234,7 @@ void taskADCFx(UArg arg0, UArg arg1){
 
             /* Send data */
             if((prevJoytick.x != joystick.x) || (prevJoytick.y != joystick.y)){
-                Mailbox_post(mbxJoystick, &joystick, BIOS_NO_WAIT);                                     // If there's new data then send it
+                Mailbox_post(mbxJoystick, &joystick, BIOS_NO_WAIT);                                     // If there's new data then send it to the LCD
                 prevJoytick.x = joystick.x;
                 prevJoytick.y = joystick.y;
             }

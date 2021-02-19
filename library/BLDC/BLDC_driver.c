@@ -56,7 +56,7 @@
  *      MACROS
  ****************************************************************************************************************************************************/
 /* Motor control Events */
-#define EVENT_MOTOR_MBX_SPEED       Event_Id_00
+#define EVENT_MOTOR_MBX_SPEED       Event_Id_00     // Todo: Chage name to motorMbxSpeedControl
 #define EVENT_MOTOR_TOGGLE_STATUS   Event_Id_01
 #define EVENT_MOTOR_STOP            Event_Id_02
 
@@ -66,8 +66,8 @@
 
 /* Speed calculation Events */
 #define EVENT_ELECTRIC_REVOLUTION   Event_Id_00
-#define EVENT_SPEED_0               Event_Id_01
-#define EVENT_THEORICAL_SPEED_MBX   Event_Id_02
+#define EVENT_SPEED_0               Event_Id_01     // Todo: Instead use a timeout
+#define EVENT_THEORICAL_SPEED_MBX   Event_Id_02     // Todo: Change name to motorSpeed
 
 /* Speed calculations */
 #define STEPS_PER_LAP               43              // Motor steps per lap. Number of phase changes needed to complete a lap. Todo: Make sure 42 are the actual steps of the motor
@@ -381,17 +381,18 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                         motor.ctrlType = MOTOR_CTR_OL;
                         Timer_A_disableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);
 
-                        Event_post(eventMotorControl, EVENT_MOTOR_MBX_SPEED);
-
+                        Event_post(eventMotorControl, EVENT_MOTOR_MBX_SPEED);                   // Execute the task again to make sure the open loop control is set instantaneously
+                                                                                                // Todo: if mbxDutyCycle is put at the end of the task, then add a "continue" statement here
                     } else {
-                        Mailbox_post(mbxDutyCycle, &motor.dutyCycleRaw, BIOS_NO_WAIT);        // Send Duty Cycle to the actual motor drive task (taskPhaseChange)
+                        Mailbox_post(mbxDutyCycle, &motor.dutyCycleRaw, BIOS_NO_WAIT);          // Send Duty Cycle to the actual motor drive task (taskPhaseChange)
+                                                                                                // Todo: try putting this post at the end of the task (always is sent exept in CL->OL transition)
                     }
 
                 } else {
 
                     /* UNKNOWN MOTOR CONTROL TYPE */
                     /* Safe stop */
-                    Swi_post(swiMotorStop);
+                    Swi_post(swiMotorStop);                                                     // Todo: this can never happen, change it to a evnet post (motor stop) to taskPhaseChange
 
                     /* Report error and halt */
                     System_printf("Unknown ctrlType on taskMotorControl. Event: %d \n", motor.ctrlType);
@@ -473,7 +474,7 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
          *  - EVENT_MOTOR_STOP:     Stop the motor
          *  - EVENT_CHANGE_PHASE:   Switches to next phase of the motor
          */
-        events = Event_pend(eventPhaseChange, Event_Id_NONE, EVENT_PHASE_STOP | EVENT_CHANGE_PHASE, BIOS_WAIT_FOREVER);
+        events = Event_pend(eventPhaseChange, Event_Id_NONE, EVENT_PHASE_STOP | EVENT_CHANGE_PHASE, BIOS_WAIT_FOREVER); // Todo: try to add mailbox event (duty cycle)
 
         /* Get duty cycle */
         Mailbox_pend(mbxDutyCycle, &dutyCycleRaw, BIOS_NO_WAIT);
@@ -553,7 +554,7 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
 
         events = Event_pend(eventSpeed, Event_Id_NONE, EVENT_SPEED_0 | EVENT_ELECTRIC_REVOLUTION, BIOS_WAIT_FOREVER);
 
-        if(events & EVENT_SPEED_0){
+        if(events & EVENT_SPEED_0){                                         // Todo: Insted of an event, I could use a timeout to detect the motor has stopped
 
             /* Send speed */
             speed = 0;                                                      // Motor has stoped
@@ -562,9 +563,6 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
             Mailbox_post(mbxTheoricalSpeed, &speed, BIOS_WAIT_FOREVER);     // Wait until speed can be printed
 
         } else if(events & EVENT_ELECTRIC_REVOLUTION){
-
-            /* Get time buffer from taskPhaseChange */
-            //Mailbox_pend(mbxPhaseChangeTime, timeBuff, BIOS_NO_WAIT);
 
             /* Get Timestamp */
             tstop = Timestamp_get32();
