@@ -554,9 +554,9 @@ void taskSpeedCalculatorFx(UArg arg1, UArg arg2){
 
     while(1){
 
-        events = Event_pend(eventSpeed, Event_Id_NONE, EVENT_SPEED_0 | EVENT_ELECTRIC_REVOLUTION, BIOS_WAIT_FOREVER);
+        events = Event_pend(eventSpeed, Event_Id_NONE, EVENT_SPEED_0 | EVENT_ELECTRIC_REVOLUTION, 10);
 
-        if(events & EVENT_SPEED_0){                                         // Todo: Insted of an event, I could use a timeout to detect the motor has stopped
+        if((events & EVENT_SPEED_0) || !events){                                         // Todo: Insted of an event, I could use a timeout to detect the motor has stopped
 
             /* Send speed */
             speed = 0;                                                      // Motor has stoped
