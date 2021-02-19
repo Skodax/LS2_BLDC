@@ -77,7 +77,7 @@
 #define TIME_AVG_SHIFT              4               // Shift factor for average calculation
 
 /* Motor limits */
-#define MOTOR_OL_MAX_SPEED          1200            // Max speed with the MOTOR_MAX_DUTY
+#define MOTOR_OL_MAX_SPEED          3000    /*1200 When transition to CL is enabled*/           // Max speed with the MOTOR_MAX_DUTY
 #define MOTOR_CL_MIN_DUTY           360039055
 
 /* Closed loop control */
@@ -345,12 +345,14 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
 
                         /* Open Loop max speed reached */
                         speed = MOTOR_OL_MAX_SPEED;                                 // Mantain value at max speed
-                        Timer_stop(timerMotorControlOL);                            // Stop the OL control timer
 
-                        /* Change to Closed Loop control */
-                        motor.ctrlType = MOTOR_CTR_CL;                                          // Change control type
-                        motor.dutyCycleRaw = dutyCycle(12);                                     // Set initial duty for Closed Loop Control
-                        Timer_A_enableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);        // Enable interruption for the Closed Loop Control timer CCR
+                        /* Avoid transition to closed loop control */
+//                        Timer_stop(timerMotorControlOL);                            // Stop the OL control timer
+//
+//                        /* Change to Closed Loop control */
+//                        motor.ctrlType = MOTOR_CTR_CL;                                          // Change control type
+//                        motor.dutyCycleRaw = dutyCycle(12);                                     // Set initial duty for Closed Loop Control
+//                        Timer_A_enableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);        // Enable interruption for the Closed Loop Control timer CCR
 
                     } else {
 
@@ -429,7 +431,7 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
     PWM_Params_init(&PWM_params);
     PWM_params.idleLevel = PWM_IDLE_LOW;         // Output low when PWM is not running
     PWM_params.periodUnits = PWM_PERIOD_US;      // Period is in us
-    PWM_params.periodValue = 100;                // 100us -> 10KHz
+    PWM_params.periodValue = 30;                 // 20us -> 50KHz
     PWM_params.dutyUnits = PWM_DUTY_FRACTION;    // Duty is in fractional percentage
     PWM_params.dutyValue = 0;                    // 0% initial duty cycle
 
@@ -706,10 +708,22 @@ uint32_t dutyCycleForOLCtrl(int32_t speed){
      * timer period.
      */
 
-    if(speed > 1800){  return dutyCycle(30);}
+    if(speed > 2800){       return dutyCycle(35);}
+    else if(speed > 2700){  return dutyCycle(34);}
+    else if(speed > 2600){  return dutyCycle(33);}
+    else if(speed > 2500){  return dutyCycle(32);}
+    else if(speed > 2400){  return dutyCycle(32);}
+    else if(speed > 2300){  return dutyCycle(31);}
+    else if(speed > 2000){  return dutyCycle(30);}
+    else if(speed > 1800){  return dutyCycle(29);}
+    else if(speed > 1700){  return dutyCycle(28);}
+    else if(speed > 1600){  return dutyCycle(27);}
     else if(speed > 1400){  return dutyCycle(25);}
-    else if(speed > 1100){  return dutyCycle(20);}
-    else if(speed > 700){   return dutyCycle(15);}
+    else if(speed > 1200){  return dutyCycle(23);}
+    else if(speed > 1000){  return dutyCycle(20);}
+    else if(speed > 900){   return dutyCycle(19);}
+    else if(speed > 600){   return dutyCycle(16);}
+    else if(speed > 400){   return dutyCycle(13);}
     else {                  return dutyCycle(10);}
 
 }
