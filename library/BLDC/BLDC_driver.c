@@ -77,7 +77,7 @@
 #define TIME_AVG_SHIFT              4               // Shift factor for average calculation
 
 /* Motor limits */
-#define MOTOR_OL_MAX_SPEED          3000 //1200            // Max speed with the MOTOR_MAX_DUTY
+#define MOTOR_OL_MAX_SPEED          500 //1200            // Max speed with the MOTOR_MAX_DUTY
 #define MOTOR_CL_MIN_DUTY           360039055
 
 /* Closed loop control */
@@ -219,7 +219,9 @@ void hwiClcTimerFx(UArg arg){
 
     /* Closed Loop Control - Phase change trigger */
     Timer_A_clearCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);         // Clear interrupt flag
-//    Event_post(eventPhaseChange, EVENT_CHANGE_PHASE);                       // Change phase (next one)
+
+    /* CLC DEV TGL */
+    Event_post(eventPhaseChange, EVENT_CHANGE_PHASE);                       // Change phase (next one)
 
     /* Debug */
     GPIO_write(BEMF_PHC_CLC_GPIO, 0);
@@ -252,7 +254,7 @@ void swiBemfZeroCrossFx(UArg arg1, UArg arg2){
     uint16_t phaseTime = Timer_A_getCounterValue(CLC_TIMER);
     phaseTime >>= 1;
 
-    clcTime = (phaseTime * 5)/100 + (clcTime * 95)/100;
+    clcTime = (phaseTime * 2)/10 + (clcTime * 8)/10;
 
     /* Setup and Start timer */
     Timer_A_configureContinuousMode(CLC_TIMER, &clcTimerConfig);        // Reset timer value and reconfigure
@@ -319,7 +321,9 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
             Mailbox_post(mbxDutyCycle, &motor.dutyCycleRaw, BIOS_NO_WAIT);                // Send duty cycle to the motor
             Timer_stop(timerMotorControlOL);                                        // Stop OpenLoop control timer
             Timer_A_stopTimer(CLC_TIMER);                                           // Stop CLC timer
-//            Timer_A_disableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);       // Disable CLC timer interrupts
+
+            /* CLC DEV TGL */
+            Timer_A_disableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);       // Disable CLC timer interrupts
 
             Event_post(eventPhaseChange, EVENT_PHASE_STOP);                         // Cut power to the motor
 
@@ -349,12 +353,14 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
 
                         /* Open Loop max speed reached */
                         speed = MOTOR_OL_MAX_SPEED;                                 // Mantain value at max speed
-//                        Timer_stop(timerMotorControlOL);                            // Stop the OL control timer
-//
-//                        /* Change to Closed Loop control */
-//                        motor.ctrlType = MOTOR_CTR_CL;                                          // Change control type
-//                        motor.dutyCycleRaw = dutyCycle(12);                                     // Set initial duty for Closed Loop Control
-//                        Timer_A_enableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);        // Enable interruption for the Closed Loop Control timer CCR
+
+                        /* CLC DEV TGL */
+                        Timer_stop(timerMotorControlOL);                            // Stop the OL control timer
+
+                        /* Change to Closed Loop control */
+                        motor.ctrlType = MOTOR_CTR_CL;                                          // Change control type
+                        motor.dutyCycleRaw = dutyCycle(12);                                     // Set initial duty for Closed Loop Control
+                        Timer_A_enableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);        // Enable interruption for the Closed Loop Control timer CCR
 
                     } else {
 
@@ -453,8 +459,11 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
     /* Closed Loop Control */
     Timer_A_configureContinuousMode(CLC_TIMER, &clcTimerConfig);                // Timer configured in continous mode
     Timer_A_initCompare(CLC_TIMER, &clcCompareConfig);                          // Compare register for closed loop phase change interruption
-//    Timer_A_disableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);           // Disable CCR CLC timer interrupts for proper OL control
-    Timer_A_enableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);           // Disable CCR CLC timer interrupts for proper OL control
+
+    /* CLC DEV TGL */
+    Timer_A_disableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);           // Disable CCR CLC timer interrupts for proper OL control
+//    Timer_A_enableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);           // Disable CCR CLC timer interrupts for proper OL control
+
     Interrupt_enableInterrupt(CLC_TIMER_INT);                                   // Enable timer's interruptions
 
 
@@ -495,6 +504,9 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
             /* Closed loop */
             // Todo: try if putting this into the motorCOntrol task
             Timer_A_stopTimer(CLC_TIMER);                                           // Stop timer
+
+            /* CLC DEV TGL */
+            Timer_A_disableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);           // Disable CCR CLC timer interrupts for proper OL control
 
             /* BEMF Control Development*/
             GPIO_write(BEMF_PHC0_GPIO, 0);                                             // Phase check LOW when motor is stopped
