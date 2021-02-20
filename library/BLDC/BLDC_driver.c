@@ -90,7 +90,7 @@
 const Timer_A_ContinuousModeConfig clcTimerConfig =
 {
     TIMER_A_CLOCKSOURCE_SMCLK,              // ACLK Clock Source
-    TIMER_A_CLOCKSOURCE_DIVIDER_32,          // ACLK/1 = 32.768khz
+    TIMER_A_CLOCKSOURCE_DIVIDER_1,          // ACLK/1 = 32.768khz
     TIMER_A_TAIE_INTERRUPT_DISABLE,         // Enable Overflow ISR
     TIMER_A_DO_CLEAR                        // Clear Counter
 };
@@ -252,7 +252,7 @@ void swiBemfZeroCrossFx(UArg arg1, UArg arg2){
     /* Get last phase time */
     Timer_A_stopTimer(CLC_TIMER);
     uint16_t phaseTime = Timer_A_getCounterValue(CLC_TIMER);
-    phaseTime >>= 1;
+    phaseTime >>= 4;
 
     clcTime = (phaseTime * 2)/10 + (clcTime * 8)/10;
 
