@@ -327,8 +327,8 @@ bool ADCinit(void)
     /* Comparation Window */
     errorInit = MAP_ADC14_setComparatorWindowValue(
                                                     ADC_COMP_WINDOW0,   // Configure Comparation Window 0
-                                                    -ADC_WIN_TH,        // Lower edge of the window
-                                                    ADC_WIN_TH          // Upper edge of the window
+                                                    ADC_WIN_TH,        // Lower edge of the window
+                                                    -ADC_WIN_TH          // Upper edge of the window
                                                    );
     if(!errorInit){return errorInit;}                                   //check error
 
@@ -433,6 +433,7 @@ void confAdcBemf(uint8_t phase){
 
     /* Prepare ADC for configuration */
     MAP_ADC14_disableConversion();                                                      // To configure the ADC needs to be disabled
+    MAP_ADC14_clearInterruptFlag(ADC_HI_INT | ADC_LO_INT);
 
     /* Phase configuration */
     switch (phase) {

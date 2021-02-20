@@ -77,7 +77,7 @@
 #define TIME_AVG_SHIFT              4               // Shift factor for average calculation
 
 /* Motor limits */
-#define MOTOR_OL_MAX_SPEED          1200            // Max speed with the MOTOR_MAX_DUTY
+#define MOTOR_OL_MAX_SPEED          3000 //1200            // Max speed with the MOTOR_MAX_DUTY
 #define MOTOR_CL_MIN_DUTY           360039055
 
 /* Closed loop control */
@@ -90,7 +90,7 @@
 const Timer_A_ContinuousModeConfig clcTimerConfig =
 {
     TIMER_A_CLOCKSOURCE_SMCLK,              // ACLK Clock Source
-    TIMER_A_CLOCKSOURCE_DIVIDER_1,          // ACLK/1 = 32.768khz
+    TIMER_A_CLOCKSOURCE_DIVIDER_32,          // ACLK/1 = 32.768khz
     TIMER_A_TAIE_INTERRUPT_DISABLE,         // Enable Overflow ISR
     TIMER_A_DO_CLEAR                        // Clear Counter
 };
@@ -100,6 +100,8 @@ const Timer_A_CompareModeConfig clcCompareConfig = {
     CLC_TIMER_CCR_IE,
     TIMER_A_OUTPUTMODE_OUTBITVALUE
 };
+
+volatile uint16_t clcTime = 0;
 
 /****************************************************************************************************************************************************
  *      RTOS HANDLERS
@@ -217,7 +219,7 @@ void hwiClcTimerFx(UArg arg){
 
     /* Closed Loop Control - Phase change trigger */
     Timer_A_clearCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);         // Clear interrupt flag
-    Event_post(eventPhaseChange, EVENT_CHANGE_PHASE);                       // Change phase (next one)
+//    Event_post(eventPhaseChange, EVENT_CHANGE_PHASE);                       // Change phase (next one)
 
     /* Debug */
     GPIO_write(BEMF_PHC_CLC_GPIO, 0);
@@ -250,9 +252,11 @@ void swiBemfZeroCrossFx(UArg arg1, UArg arg2){
     uint16_t phaseTime = Timer_A_getCounterValue(CLC_TIMER);
     phaseTime >>= 1;
 
+    clcTime = (phaseTime * 5)/100 + (clcTime * 95)/100;
+
     /* Setup and Start timer */
     Timer_A_configureContinuousMode(CLC_TIMER, &clcTimerConfig);        // Reset timer value and reconfigure
-    Timer_A_setCompareValue(CLC_TIMER, CLC_TIMER_CCR, phaseTime);       // Set interrupt for next phase change
+    Timer_A_setCompareValue(CLC_TIMER, CLC_TIMER_CCR, clcTime);       // Set interrupt for next phase change
     Timer_A_startCounter(CLC_TIMER, TIMER_A_CONTINUOUS_MODE);           // Starts the timer that  will trigger the phase change
 
     GPIO_write(BEMF_PHC_CLC_GPIO, 1);
@@ -315,7 +319,7 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
             Mailbox_post(mbxDutyCycle, &motor.dutyCycleRaw, BIOS_NO_WAIT);                // Send duty cycle to the motor
             Timer_stop(timerMotorControlOL);                                        // Stop OpenLoop control timer
             Timer_A_stopTimer(CLC_TIMER);                                           // Stop CLC timer
-            Timer_A_disableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);       // Disable CLC timer interrupts
+//            Timer_A_disableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);       // Disable CLC timer interrupts
 
             Event_post(eventPhaseChange, EVENT_PHASE_STOP);                         // Cut power to the motor
 
@@ -345,12 +349,12 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
 
                         /* Open Loop max speed reached */
                         speed = MOTOR_OL_MAX_SPEED;                                 // Mantain value at max speed
-                        Timer_stop(timerMotorControlOL);                            // Stop the OL control timer
-
-                        /* Change to Closed Loop control */
-                        motor.ctrlType = MOTOR_CTR_CL;                                          // Change control type
-                        motor.dutyCycleRaw = dutyCycle(12);                                     // Set initial duty for Closed Loop Control
-                        Timer_A_enableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);        // Enable interruption for the Closed Loop Control timer CCR
+//                        Timer_stop(timerMotorControlOL);                            // Stop the OL control timer
+//
+//                        /* Change to Closed Loop control */
+//                        motor.ctrlType = MOTOR_CTR_CL;                                          // Change control type
+//                        motor.dutyCycleRaw = dutyCycle(12);                                     // Set initial duty for Closed Loop Control
+//                        Timer_A_enableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);        // Enable interruption for the Closed Loop Control timer CCR
 
                     } else {
 
@@ -429,7 +433,7 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
     PWM_Params_init(&PWM_params);
     PWM_params.idleLevel = PWM_IDLE_LOW;         // Output low when PWM is not running
     PWM_params.periodUnits = PWM_PERIOD_US;      // Period is in us
-    PWM_params.periodValue = 100;                // 100us -> 10KHz
+    PWM_params.periodValue = 20;                // 100us -> 10KHz
     PWM_params.dutyUnits = PWM_DUTY_FRACTION;    // Duty is in fractional percentage
     PWM_params.dutyValue = 0;                    // 0% initial duty cycle
 
@@ -449,7 +453,8 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
     /* Closed Loop Control */
     Timer_A_configureContinuousMode(CLC_TIMER, &clcTimerConfig);                // Timer configured in continous mode
     Timer_A_initCompare(CLC_TIMER, &clcCompareConfig);                          // Compare register for closed loop phase change interruption
-    Timer_A_disableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);           // Disable CCR CLC timer interrupts for proper OL control
+//    Timer_A_disableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);           // Disable CCR CLC timer interrupts for proper OL control
+    Timer_A_enableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);           // Disable CCR CLC timer interrupts for proper OL control
     Interrupt_enableInterrupt(CLC_TIMER_INT);                                   // Enable timer's interruptions
 
 
@@ -492,7 +497,9 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
             Timer_A_stopTimer(CLC_TIMER);                                           // Stop timer
 
             /* BEMF Control Development*/
-            GPIO_write(BEMF_PHC_GPIO, 0);                                           // Phase check LOW when motor is stopped
+            GPIO_write(BEMF_PHC0_GPIO, 0);                                             // Phase check LOW when motor is stopped
+            GPIO_write(BEMF_PHC1_GPIO, 0);
+            GPIO_write(BEMF_PHC2_GPIO, 0);
 
         } else if (events & EVENT_CHANGE_PHASE){
 
@@ -505,6 +512,11 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
                 Event_post(eventSpeed, EVENT_ELECTRIC_REVOLUTION);                  // Motor speed calculation
             }
 
+            /* BEMF Control Development*/
+             GPIO_write(BEMF_PHC0_GPIO, 0x01 & phase);                                             // Phase check LOW when motor is stopped
+             GPIO_write(BEMF_PHC1_GPIO, 0x02 & phase);
+             GPIO_write(BEMF_PHC2_GPIO, 0x04 & phase);
+
             /* Motor State */
             PWM_setDuty(PWM_A, dutyCycleRaw);
             PWM_setDuty(PWM_B, dutyCycleRaw);
@@ -514,8 +526,6 @@ void taskPhaseChangeFx(UArg arg1, UArg arg2){
             /* BEMF reading */
             confAdcBemf(phase);                                                     // Configure ADC to read the proper phase
 
-            /* BEMF Control Development*/
-            GPIO_toggle(BEMF_PHC_GPIO);                                             // Phase check LOW when motor is stopped
 
         } else {
 
@@ -706,10 +716,22 @@ uint32_t dutyCycleForOLCtrl(int32_t speed){
      * timer period.
      */
 
-    if(speed > 1800){  return dutyCycle(30);}
+    if(speed > 2800){       return dutyCycle(35);}
+    else if(speed > 2700){  return dutyCycle(34);}
+    else if(speed > 2600){  return dutyCycle(33);}
+    else if(speed > 2500){  return dutyCycle(32);}
+    else if(speed > 2400){  return dutyCycle(32);}
+    else if(speed > 2300){  return dutyCycle(31);}
+    else if(speed > 2000){  return dutyCycle(30);}
+    else if(speed > 1800){  return dutyCycle(29);}
+    else if(speed > 1700){  return dutyCycle(28);}
+    else if(speed > 1600){  return dutyCycle(27);}
     else if(speed > 1400){  return dutyCycle(25);}
-    else if(speed > 1100){  return dutyCycle(20);}
-    else if(speed > 700){   return dutyCycle(15);}
+    else if(speed > 1200){  return dutyCycle(23);}
+    else if(speed > 1000){  return dutyCycle(20);}
+    else if(speed > 900){   return dutyCycle(19);}
+    else if(speed > 600){   return dutyCycle(16);}
+    else if(speed > 400){   return dutyCycle(13);}
     else {                  return dutyCycle(10);}
 
 }
