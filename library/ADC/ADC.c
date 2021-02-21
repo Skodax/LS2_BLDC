@@ -58,7 +58,7 @@
 #define ADC_SEQ_ST_ADD                              ADC_MEM_PHASE_A     // Conversion sequence start address
 #define ADC_SEQ_SP_ADD                              ADC_MEM_JOYSTICK_Y  // Conversion sequence stop address
 
-#define ADC_WIN_TH                                  200                  // Comparation window threshold value -> Range = [-WIN_TH, WIN_TH]
+#define ADC_WIN_TH                                  800                  // Comparation window threshold value -> Range = [-WIN_TH, WIN_TH]
 #define ADC_ALL_INT                                 0xFFFFFFFFFFFFFFFF  // All interruptions mask
 
 /* Events */

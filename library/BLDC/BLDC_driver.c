@@ -77,8 +77,8 @@
 #define TIME_AVG_SHIFT              4               // Shift factor for average calculation
 
 /* Motor limits */
-#define MOTOR_OL_MAX_SPEED          1200 //1200            // Max speed with the MOTOR_MAX_DUTY
-#define MOTOR_CL_MIN_DUTY           360039055
+#define MOTOR_OL_MAX_SPEED          2000 //1200            // Max speed with the MOTOR_MAX_DUTY
+#define MOTOR_CL_MIN_DUTY           605909999 //360039055
 
 /* Closed loop control */
 #define CLC_TIMER                   TIMER_A3_BASE                           // Use timer A3
@@ -385,7 +385,7 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                     if(motor.dutyCycleRaw < MOTOR_CL_MIN_DUTY){
 
                         /* Closed Loop min speed reached */
-                        speed = 1000;
+                        speed = 2000;
 
                         /* Change to Closed Loop control */
                         motor.ctrlType = MOTOR_CTR_OL;
