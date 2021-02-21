@@ -70,7 +70,7 @@
 #define EVENT_THEORICAL_SPEED_MBX   Event_Id_02     // Todo: Change name to motorSpeed
 
 /* Speed calculations */
-#define STEPS_PER_LAP               43              // Motor steps per lap. Number of phase changes needed to complete a lap. Todo: Make sure 42 are the actual steps of the motor
+#define STEPS_PER_LAP               42              // Motor steps per lap. Number of phase changes needed to complete a lap. Todo: Make sure 42 are the actual steps of the motor
 #define STEPS_PER_ELECTRIC_REV      6               // There's 6 phase changes in a complete electric revolution
 #define ELECTRIC_REV_PER_LAP        (STEPS_PER_LAP/STEPS_PER_ELECTRIC_REV)
 #define TIME_BUFF_LEN               16              // Number of time samples to average in order to calculate motor's speed
