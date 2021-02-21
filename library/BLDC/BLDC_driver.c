@@ -77,7 +77,7 @@
 #define TIME_AVG_SHIFT              4               // Shift factor for average calculation
 
 /* Motor limits */
-#define MOTOR_OL_MAX_SPEED          500 //1200            // Max speed with the MOTOR_MAX_DUTY
+#define MOTOR_OL_MAX_SPEED          1200 //1200            // Max speed with the MOTOR_MAX_DUTY
 #define MOTOR_CL_MIN_DUTY           360039055
 
 /* Closed loop control */
@@ -359,7 +359,7 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
 
                         /* Change to Closed Loop control */
                         motor.ctrlType = MOTOR_CTR_CL;                                          // Change control type
-                        motor.dutyCycleRaw = dutyCycle(12);                                     // Set initial duty for Closed Loop Control
+//                        motor.dutyCycleRaw = dutyCycle(12);                                     // Set initial duty for Closed Loop Control
                         Timer_A_enableCaptureCompareInterrupt(CLC_TIMER, CLC_TIMER_CCR);        // Enable interruption for the Closed Loop Control timer CCR
 
                     } else {
@@ -385,7 +385,7 @@ void taskMotorControlFx(UArg arg1, UArg arg2){
                     if(motor.dutyCycleRaw < MOTOR_CL_MIN_DUTY){
 
                         /* Closed Loop min speed reached */
-                        speed = 1100;
+                        speed = 1000;
 
                         /* Change to Closed Loop control */
                         motor.ctrlType = MOTOR_CTR_OL;
