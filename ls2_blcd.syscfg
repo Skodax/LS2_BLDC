@@ -22,6 +22,8 @@ const GPIO10  = GPIO.addInstance();
 const GPIO11  = GPIO.addInstance();
 const GPIO12  = GPIO.addInstance();
 const GPIO13  = GPIO.addInstance();
+const GPIO18  = GPIO.addInstance();
+const GPIO19  = GPIO.addInstance();
 const PWM     = scripting.addModule("/ti/drivers/PWM", {}, false);
 const PWM1    = PWM.addInstance();
 const PWM2    = PWM.addInstance();
@@ -90,13 +92,21 @@ GPIO11.mode            = "Output";
 GPIO11.$name           = "BEMF_ZCD_GPIO";
 GPIO11.gpioPin.$assign = "expansion.12";
 
-GPIO12.$name           = "BEMF_PHC_GPIO";
 GPIO12.mode            = "Output";
+GPIO12.$name           = "BEMF_PHC0_GPIO";
 GPIO12.gpioPin.$assign = "expansion.10";
 
 GPIO13.$name           = "BEMF_PHC_CLC_GPIO";
 GPIO13.mode            = "Output";
 GPIO13.gpioPin.$assign = "expansion.14";
+
+GPIO18.$name           = "BEMF_PHC1_GPIO";
+GPIO18.mode            = "Output";
+GPIO18.gpioPin.$assign = "expansion.28";
+
+GPIO19.$name           = "BEMF_PHC2_GPIO";
+GPIO19.mode            = "Output";
+GPIO19.gpioPin.$assign = "expansion.30";
 
 PWM1.$name                = "PHASE_A_HIN";
 PWM1.timer.$assign        = "Timer_A1";

@@ -58,7 +58,7 @@
 #define ADC_SEQ_ST_ADD                              ADC_MEM_PHASE_A     // Conversion sequence start address
 #define ADC_SEQ_SP_ADD                              ADC_MEM_JOYSTICK_Y  // Conversion sequence stop address
 
-#define ADC_WIN_TH                                  20                  // Comparation window threshold value -> Range = [-WIN_TH, WIN_TH]
+#define ADC_WIN_TH                                  800                  // Comparation window threshold value -> Range = [-WIN_TH, WIN_TH]
 #define ADC_ALL_INT                                 0xFFFFFFFFFFFFFFFF  // All interruptions mask
 
 /* Events */
@@ -327,8 +327,8 @@ bool ADCinit(void)
     /* Comparation Window */
     errorInit = MAP_ADC14_setComparatorWindowValue(
                                                     ADC_COMP_WINDOW0,   // Configure Comparation Window 0
-                                                    -ADC_WIN_TH,        // Lower edge of the window
-                                                    ADC_WIN_TH          // Upper edge of the window
+                                                    ADC_WIN_TH,          // Lower edge of the window
+                                                    -ADC_WIN_TH        // Upper edge of the window
                                                    );
     if(!errorInit){return errorInit;}                                   //check error
 
@@ -433,6 +433,7 @@ void confAdcBemf(uint8_t phase){
 
     /* Prepare ADC for configuration */
     MAP_ADC14_disableConversion();                                                      // To configure the ADC needs to be disabled
+    MAP_ADC14_clearInterruptFlag(ADC_HI_INT | ADC_LO_INT);
 
     /* Phase configuration */
     switch (phase) {
